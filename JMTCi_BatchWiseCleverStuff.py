@@ -13,6 +13,7 @@ import numpy as np
 from pathlib import Path
 import seaborn as sns
 import matplotlib.pyplot as plt
+from scipy import stats
 import os
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import MinMaxScaler
@@ -36,12 +37,7 @@ from sklearn.metrics import mean_squared_error
 from sklearn import feature_selection
 from sklearn import pipeline
 import time
-from scipy.optimize import curve_fit
 from scipy.stats import linregress
-# import numpy as np # linear algebra
-# import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
-# from sklearn.decomposition import PCA
-# from sklearn.preprocessing import Imputer
 from sklearn.model_selection import KFold
 from sklearn import linear_model
 from sklearn.metrics import make_scorer
@@ -50,15 +46,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn import svm
 # from sklearn.metrics import r2_score
 from sklearn.ensemble import AdaBoostRegressor
-# from sklearn.model_selection import cross_val_score
-# from sklearn.tree import DecisionTreeRegressor
 from sklearn.model_selection import GridSearchCV
-# import matplotlib.pyplot as plt
-# import tflearn
-# import tensorflow as tf
-# import seaborn
-# import warnings
-# warnings.filterwarnings('ignore')
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -670,7 +658,7 @@ save_fname = None, save_path = None):
         
         edgecolor_var = "black"
         im = ax.scatter(x_vals, y_vals, c = c_val,
-            cmap = "viridis", marker = 'o', s = 100, alpha = 0.7,linewidth = 1.5,
+            cmap = "viridis_r", marker = 'o', s = 100, alpha = 0.7,linewidth = 1.5,
             edgecolor = edgecolor_var, label = c_label)
             
         fig.colorbar(im, ax=ax, label = f"{c_label}")
@@ -694,7 +682,7 @@ save_fname = None, save_path = None):
      
     plt.show()
 
-def pca_biplot(x_vals, y_vals, x_label, y_label, c_val = None, c_label = None,
+def pca_biplot(x_vals, y_vals, x_label, y_label, c_val = None, c_label = None, cmap_var = "viridis_r",
 save_fname = None, save_path = None):
     
     fig, ax = plt.subplots(figsize = (10,6))
@@ -706,7 +694,7 @@ save_fname = None, save_path = None):
         
         edgecolor_var = "black"
         im = ax.scatter(x_vals, y_vals, c = c_val,
-            cmap = "viridis", marker = 'o', s = 100, alpha = 0.7,linewidth = 1.5,
+            cmap = cmap_var, marker = 'o', s = 100, alpha = 0.7,linewidth = 1.5,
             edgecolor = edgecolor_var, label = c_label)
             
         fig.colorbar(im, ax=ax, label = f"{c_label}")
@@ -731,6 +719,52 @@ save_fname = None, save_path = None):
      
     plt.show()
 
+def lin_reg(x_vals, y_vals):
+    m, c, r_value, p_value, std_err = linregress(x_vals, y_vals)
+    x_func = np.linspace(x_vals.min(), x_vals.max(), 50)
+    y_func = m * x_func + c
+    y_pred = m * x_vals + c
+    r2_pred = r2_score(y_vals, y_pred)
+    rmse_pred = abs(mean_squared_error(y_vals, y_pred))**0.5
+
+    return m, c, std_err, r2_pred, rmse_pred, x_func, y_func
+
+def basic_scatter(dataFrame, x_string, y_string, z_string = None,
+                   marker_size = 50, y_limits = None, x_limits = None,
+                   save_fname = None, save_path = None):
+
+    fig, ax = plt.subplots(figsize = (7,5))
+    
+    if z_string:
+        z_list = dataFrame[z_string].unique()
+        for i, z in enumerate(z_list):
+            x_vals = dataFrame[x_string].loc[dataFrame[z_string] == z]
+            y_vals = dataFrame[y_string].loc[dataFrame[z_string] == z]
+
+            ax.scatter(x_vals ,y_vals,
+                    color = tab10_colors_list[i], marker = marker_list[i], facecolor = "none",
+                    label = str(z), s = marker_size)
+            
+        ax.legend(title = z_string, loc = "best",
+                  framealpha = 1, shadow = False)
+    
+    else:
+        ax.scatter(dataFrame[x_string] ,dataFrame[y_string],
+                color = tab10_colors_list[0], marker = marker_list[0], facecolor = "none",
+                s = marker_size)
+        
+    # ax.grid(which = "both", axis = "y")
+    ax.set(ylim = y_limits, xlim = x_limits,
+           ylabel = y_string, xlabel = x_string)
+    
+    plt.tight_layout()
+    
+    if save_path and save_fname:
+        image_name = save_path / (save_fname.replace(" ", "")+".png")
+        plt.savefig(image_name, facecolor='w')
+    
+    plt.show()
+
 #%% input variable
 source_path = Path("C:/Users/JacksC01/OneDrive - Johnson Matthey/Documents/DigitalModelling/JMTCi4Fermentation/data")
 output_path = Path("C:/Users/JacksC01/OneDrive - Johnson Matthey/Documents/DigitalModelling/JMTCi4Fermentation/figures")
@@ -738,7 +772,7 @@ output_path = Path("C:/Users/JacksC01/OneDrive - Johnson Matthey/Documents/Digit
 source_fname = "batchwise_fermentation.csv"
 
 cv_val = 7
-pca_components = 3
+pca_components = 4
 #%% import of production summary and clean
 df = pd.read_csv(source_path / source_fname)
 df.set_index("USP", drop = True, inplace = True)
@@ -753,16 +787,22 @@ df.sort_values(by = ["Scale (l)"]+ features, ascending = True, inplace = True)
 cols_remove_for_pca = [col for col in X_cols if ", t" in col]
 X_cols_pcr = list(set(X_cols) - set(cols_remove_for_pca))
 
-# data prep
+#%% PCA data prep
 pca_path = create_dir("PCA", output_path)
 X = df[X_cols_pcr].to_numpy()
-scaler_X = StandardScaler()#MinMaxScaler()
+scaler_X = StandardScaler()
 scaler_X.fit(X) # get mean and std dev for scaling
 X_scaled = scaler_X.transform(X) # scaled
 
-y = df[features].to_numpy()
-
 usp_index = df.index.to_list()
+
+y = df[features].to_numpy()
+scaler_y = StandardScaler()
+scaler_y.fit(y) # get mean and std dev for scaling
+y_scaled = scaler_y.transform(y) # scaled
+df_y_norm = pd.DataFrame(data = y_scaled,
+    columns = features, index = usp_index)
+
 print("Data ready.")
 #%%
 pca_var_explained(X_scaled, pca_components, x_lim = [0,8],
@@ -782,118 +822,35 @@ pca_exp_cols = ["PC{0} ({1} %)".format(i, round(var_exp[i-1] * 100, 1)) for i in
 
 #%%
 pca_df = pd.DataFrame(data = scores_pca, columns = pca_cols, index = usp_index)
-# df_features = pd.DataFrame(data = y, columns = features, index = usp_index)
-# pca_df = pd.merge(left = pca_df, right = df[["Scale (l)"] + features], left_index = True,
-# right_index = True)
 pca_df = pd.merge(left = pca_df, right = df[features], left_index = True,
-right_index = True)
+    right_index = True)
+pca_df["USP"] = pca_df.index
+pca_df.reset_index(drop = True, inplace = True)
 
-#pd.merge(left = pca_df, right = df_features, how = "left", left_index = True, right_index = True)
+pca_df_melt = pd.melt(pca_df, id_vars = ["USP"]+features,
+    var_name = "Component", value_name = "Value")
 
 loadings_df = pd.DataFrame(loadings_pca, columns= pca_cols, index = X_cols_pcr)
 loadings_df["Feature"] = loadings_df.index
 loadings_df["Parameter"] = loadings_df["Feature"].apply(lambda x: x.rsplit(", t=", 2)[0])
 
-df_timevar = loadings_df.drop(X_cols_ps, axis = 0) # drop non-process variables
-df_timevar["Time (H)"] = df_timevar["Feature"].apply(lambda x: float(x.split(", t=")[-1])) # split time and parameter
-# pivot by time and parameter
-df_timevar_melt = pd.melt(df_timevar, id_vars=["Parameter", "Time (H)"], value_vars = pca_cols,
-var_name="PC", value_name='LOADINGS', col_level=None, ignore_index=True)
-df_timevar_melt["LOADINGS"] = df_timevar_melt["LOADINGS"].astype(float)
-df_timevar_melt["LOADINGS ABS"] = df_timevar_melt["LOADINGS"].abs()
-# df_timevar_melt.sort_values(by = "Time (H)", ascending= True, inplace = True)
-df_timevar_melt.sort_values(by = ["Parameter", "Time (H)"], ascending= True, inplace = True)
-
-# scatter plot of pcs vs features
-pca_df["USP"] = pca_df.index
-pca_df.reset_index(drop = True, inplace = True)
-pca_df_melt = pd.melt(pca_df, id_vars = ["USP"]+features,
-    var_name = "Component", value_name = "Value")
-
-#%% pcr grid search
-# all_r2 = []
-# cv_val = 7
-# scorer_var = 'neg_root_mean_squared_error'
-# for y_col in features[:]:
-#     print("-----------------------\n",y_col)
-#     y_col_short = y_col.split(" (")[0].title()#.replace(" ","")
-#     y_units = y_col.split(" ")[-1]
-#     y_col_path = create_dir(y_col_short + "_PCA", output_path)
-
-#     X_y_df = df[X_cols + [y_col]].dropna(how = "any", axis = 0)
-#     y = X_y_df[y_col].to_numpy().reshape(-1, 1)
-#     scaler_y = MinMaxScaler()
-#     scaler_y.fit(y)
-#     y_pcr = scaler_y.transform(y)
-
-#     X = X_y_df[X_cols].to_numpy()
-#     scaler_X = StandardScaler()
-#     scaler_X.fit(X) # get mean and std dev for scaling
-#     X_pcr = scaler_X.transform(X) # scale
-
-#     t0 = time.time()
-#     grid, pca, grid_params, grid_score = pcr(X_pcr, y_pcr, cv_folds = cv_val,
-#         score_metric = scorer_var)
-#     # pcr,
-
-#     print(grid, pca, pcr, grid_params, grid_score)
-
-
-#     run_time = (time.time() - t0) / 60
-#     print(f"{run_time: .1f} mins")
-
-
-#     grid_results = pd.DataFrame(data = grid.cv_results_)
-
-#     # print(grid_results[["param_pca__n_components", "mean_test_score"]])
-#     # results_features = grid_results.groupby("param_pca__n_components'")["rank_test_score"].min()
-#     # results_features = grid_results.loc[grid_results["rank_test_score"].isin(results_features)]
-#     # results_features.set_index("param_feat_selection__n_features_to_select", drop = True, inplace = True)
-#     # results_features.sort_index(ascending=True, inplace = True)
-#     # results_features["mean_test_score"] = results_features["mean_test_score"].abs()
-#     # best_scores_std = results_features["std_test_score"].loc[results_features["rank_test_score"] == 1].abs().mean()
-#     # # results_features["mean_test_score"] = scaler_y.inverse_transform(results_features["mean_test_score"].to_numpy())
-
-#     scatter_line_plot(grid_results["param_pca__n_components"], grid_results["mean_test_score"]*-1,
-#         "N Principal Components", f"RMSE (CV={cv_val})", y_std = grid_results["std_test_score"], y_lims = None,
-#         y_scale = 'linear', save_fname = None, save_path = y_col_path) # f"{y_col_short}_PLSRMSE" grid_results["std_test_score"]
-
-#%% pcr fitting
+#%% PCR
 all_r2 = []
 cv_val = 7
 
-for y_col in ['Volumetric Activity (U/ml)', 'Biomass Density (g/l)']:
+for y_col in features:
     print("-----------------------\n",y_col)
     y_col_short = y_col.split(" (")[0].title()#.replace(" ","")
     y_units = y_col.split(" ")[-1]
-    # g = sns.FacetGrid(pca_df_melt, col="Component",
-    #     col_wrap = 4, sharey = True, sharex = True, height = 5, aspect = 1)
-    # g.map(sns.scatterplot, "Value", y_col, alpha = 0.75, s = 80,
-    #     edgecolor = tab10_colors_list[0], color = tab10_colors_list[0])
-    # for i, ax in enumerate(g.axes[:]):
 
-    #     ax.set_xlabel(pca_cols[i])
-    #     # ax.axhline(0,ls = "--", linewidth = 1, alpha = 0.5, color = "black")
-    #     plt.tight_layout()
-    #     ax.grid(which = "both", axis = 'both')
-
-    # g.set(xlim = [-6,6],title = "")
-    # # g.set_titles("")#col_template="{col_name}"
-    # save_fname = f"{y_col_short}_PCScattering"
-    # image_name = output_path / (save_fname.replace(" ", "")+".png")
-    # plt.savefig(image_name, facecolor='w')
-    # plt.show()
-
-    # PCR
     pca_df_model = pca_df.dropna(subset = [y_col], axis = 0)
-
     X_pcr = pca_df_model[pca_cols].to_numpy()
     y = pca_df_model[y_col].to_numpy().reshape(-1, 1)
-    scaler_y = MinMaxScaler()
+    scaler_y = StandardScaler()
     scaler_y.fit(y) # get mean and std dev for scaling
     y_pcr = scaler_y.transform(y)
+
     reg = LinearRegression()
-    # y_pred_nonscale = reg.predict(X_pcr)
     y_pred_nonscale = cross_val_predict(reg, X_pcr, y_pcr, cv = cv_val)# retrieve the PCA step of the pipeline
     y_pred = scaler_y.inverse_transform(y_pred_nonscale)
     y_res = standardised_res(y[:,0], y_pred[:,0])
@@ -906,12 +863,10 @@ for y_col in ['Volumetric Activity (U/ml)', 'Biomass Density (g/l)']:
 
     r2_pred = r2_score(y, y_pred)
     rmse_pred = abs(mean_squared_error(y, y_pred))**0.5
-    all_r2.append(r2_pred)
 
     r2_fit = r2_score(y, y_pred_fit)
     rmse_fit = abs(mean_squared_error(y, y_pred_fit))**0.5
 
-    #reg = LinearRegression()
     r2_cvs = cross_val_score(reg, X_pcr, y_pcr,
     cv = cv_val, scoring= "r2")
     rmse_cvs = abs(cross_val_score(reg, X_pcr, y_pcr,
@@ -926,9 +881,7 @@ for y_col in ['Volumetric Activity (U/ml)', 'Biomass Density (g/l)']:
 
     reg.fit(X_pcr, y_pcr)   
     df_coefs = pd.Series(data = reg.coef_[0,:], index = pca_cols, name = "Coefficients").T
-    # df_coefs = df_coefs.sort_values(key = abs, ascending = False)
 
-    #df_coefs.index
     contribution_chart(pca_exp_cols, df_coefs, "Coefficients", xlim = None,
         save_path = pca_path, save_fname = f"{y_col_short}_PCRCoefs")
 
@@ -945,9 +898,210 @@ for y_col in ['Volumetric Activity (U/ml)', 'Biomass Density (g/l)']:
     pcr_fname = f"{y_col_short}_PCR.txt".replace(" ","")
     save_to_txt(pcr_fname, pca_path, pcr_string)
 
-print(all_r2)
+#%% SFS-PLS
+def pls_rfe(train,labels, cv_folds = 5, score_metric = 'neg_root_mean_squared_error'):
+    """
+    Returns: reg_est, reg_params, reg_rmse, labels_pred
+    https://www.kaggle.com/miguelangelnieto/pca-and-regression
+    """
+    # results={}
+
+    # def test_model(clf):
+        
+    #     cv = KFold(n_splits= cv_folds,shuffle=True,random_state=45)
+    #     # r2 = make_scorer(r2_score)
+    #     scores = (cross_val_score(clf, train, labels, cv=cv,scoring='neg_root_mean_squared_error'))
+        
+    #     return abs(scores.mean())
+  
+    # def rfe_grid_search(r_model, r_params):
+        
+    #     r = GridSearchCV(r_model, r_params,
+    #         scoring = 'neg_root_mean_squared_error')
+    #     r.fit(train, labels)
+        
+    #     return r#, r.best_estimator_, r.best_params_
+    
+    est = PLSRegression()
+    selector = feature_selection.SequentialFeatureSelector(est, scoring = score_metric)#feature_selection.RFE(est, step = 1)
+    pipe_params = [('feat_selection',selector),('clf', est)]
+    pipe = pipeline.Pipeline(pipe_params)
+
+    clf_parameters = {'feat_selection__n_features_to_select': list(range(1,8)),
+    'clf__n_components': list(range(1,2))}
+
+    sfs_grid = GridSearchCV(pipe, clf_parameters,
+            scoring = score_metric, cv = cv_val) # 
+    sfs_grid.fit(train, labels)
+
+    best_pls = sfs_grid.best_estimator_['clf']
+    best_featselect = sfs_grid.best_estimator_['feat_selection']
+    best_params = sfs_grid.best_params_
+    best_score = sfs_grid.best_score_ 
+
+    print("Grid search complete.")
+        
+    return sfs_grid, best_featselect, best_pls, best_params, best_score
+
+X_cols_new = sorted(X_cols)
+
+scorer_var = 'neg_root_mean_squared_error'#'neg_root_mean_squared_error'#"r2"
+scorer_label = "NRMSE"
+cv_val = 7
+
+n_features = len(X_cols_new)
+for y_col in features[0:]:
+    print(f"\n\n\n-------\n{y_col}")
+    y_col_short = y_col.split(" (")[0].title()#.replace(" ","")
+    y_units = y_col.split(" ")[-1]
+    y_col_path = create_dir(y_col_short + "_" + scorer_var, output_path)
+
+    X_y_df = df[X_cols_new + [y_col]].dropna(how = "any", axis = 0)
+    y = X_y_df[y_col].to_numpy().reshape(-1, 1)
+    scaler_y = MinMaxScaler()
+    scaler_y.fit(y)
+    y_pls = scaler_y.transform(y)
+
+    X = X_y_df[X_cols_new].to_numpy()
+    scaler_X = MinMaxScaler()
+    scaler_var = scaler_X
+    scaler_X.fit(X) # get mean and std dev for scaling
+    X_pls = scaler_X.transform(X) # scale
+
+    n_obs = len(y)
+    print(f"{n_features} features, {n_obs} datapoints")
+
+    t0 = time.time()
+    grid, featselect, pls, grid_params, grid_score = pls_rfe(X_pls, y_pls, cv_folds = cv_val,
+        score_metric = scorer_var)
+    run_time = (time.time() - t0) / 60
+    print(f"{run_time: .1f} mins")
+
+    pls_coef = pls.coef_
+    pls_loadings = pls.x_loadings_
+    featselect_sup = featselect.support_
+    # grid_score = grid_score
+
+    grid_results = pd.DataFrame(data = grid.cv_results_)
+    results_features = grid_results.groupby("param_feat_selection__n_features_to_select")["rank_test_score"].max()
+    results_features = grid_results.loc[grid_results["rank_test_score"].isin(results_features)]
+    results_features.set_index("param_feat_selection__n_features_to_select", drop = True, inplace = True)
+    results_features.sort_index(ascending=True, inplace = True)
+    results_features["mean_test_score"] = results_features["mean_test_score"]
+    best_scores_std = results_features["std_test_score"].loc[results_features["rank_test_score"] == 1].abs().mean()
+    # results_features["mean_test_score"] = scaler_y.inverse_transform(results_features["mean_test_score"].to_numpy())
+
+    scatter_line_plot(results_features.index, results_features["mean_test_score"],
+        "N Features", f"{scorer_label} (CV={cv_val})", y_std = results_features["std_test_score"], y_lims = None,
+        y_scale = 'linear', save_fname = f"{y_col_short}_{scorer_label}_features", save_path = y_col_path)
+
+    df_coefs = pd.DataFrame(data = [X_cols_new, featselect_sup], index = ["Parameter", "Selected"]).T
+    df_coefs = df_coefs.loc[df_coefs["Selected"] == True]
+    X_cols_sfs = list(df_coefs["Parameter"]) # selected features
+    X_pls_sfs = X_pls[:, featselect_sup == True]
+    df_coefs["Coefficient"] = pls_coef[:,0]
+    df_coefs = df_coefs.sort_values(by = ["Coefficient"], key = abs, ascending = False)
+    #df_coefs = df_coefs.loc[df_coefs["Coefficient"].abs() > 0.05]
+    coefs_range = [-1,1]#[coefs_range*-1, coefs_range]
+    # contribution_chart(df_coefs["Parameter"], df_coefs["Coefficient"], "Coefficient", xlim = coefs_range,
+    #     save_path = output_path, save_fname = f"{y_col_short}_PLSCoefs{n_features}")
+
+    # loadings df
+    df_loadings = pd.DataFrame(data = pls_loadings, columns = ["PLS"+str(i+1) for i in range(len(pls_loadings.T))])
+    df_loadings["Parameter"] = X_cols_sfs
+    df_loadings_melt = pd.melt(df_loadings, id_vars = ["Parameter"], var_name = "Component", value_name = "Loading")
+    df_loadings_melt = df_loadings_melt.loc[df_loadings_melt["Loading"].abs() >0.025]
+    df_loadings["Time (h)"] = df_loadings["Parameter"].apply(lambda x: x.split(", t=")[-1])
+
+    col_wrap_var = 1 if len(pls_loadings.T) == 1 else 2
+    g = sns.catplot(kind = "bar", data = df_loadings_melt, y = "Parameter", x = "Loading", col = "Component",
+    orient = "h", hue = "Parameter", palette = tab10_colors_list, dodge = False, edgecolor = "black", aspect = 2, col_wrap = col_wrap_var, legend = False)
+    g.set_axis_labels("Loading","")
+    g.set_titles("{col_name}")
+    g.tight_layout()
+    # plt.grid(which = "both", axis = 'x')
+    save_fname = f"{y_col_short}_PLSLoadings"
+    image_name = y_col_path / (save_fname.replace(" ", "")+".png")
+    plt.savefig(image_name, facecolor='w')
+    plt.show()
+
+    # scatter important parameters
+    top_params = list(df_coefs["Parameter"][:])
+    plt.rcParams.update({'font.size': 14})
+    subplots_scatter(X_y_df, top_params, y_col, n_cols = 4,
+            title_var = None, save_fname = f"{y_col_short}_PLSScatterParams", save_path = y_col_path)
+    plt.rcParams.update({'font.size': 16})
+
+    y_pred_nonscale = pls.predict(X_pls_sfs)#cross_val_predict(pls, X_pls_sfs, y_pls, cv = cv_val)
+    y_pred = scaler_y.inverse_transform(y_pred_nonscale)
+    y_res = standardised_res(y[:,0], y_pred[:,0])
+
+    r2_s = r2_score(y_pls, y_pred_nonscale) # y_pls,y_pred_nonscale 
+    mse_s = mean_squared_error(y_pls, y_pred_nonscale)# y, y_pred
+    rmse_s = (abs(mse_s))**0.5
+
+    r2_scores = cross_val_score(pls, X_pls_sfs, y_pls, cv = cv_val, scoring= "r2")#.mean()
+    rmse_scores = abs(cross_val_score(pls, X_pls_sfs, y_pls, cv = cv_val, scoring= 'neg_root_mean_squared_error'))
+
+    parity_res_plots(y, y_pred, y_res,
+        y_col, y_val_test = None, y_val_test_pred = None,
+        save_fname = f"{y_col_short}_PLSParRes", save_path = y_col_path,
+        zero_axis_lim = False)
+
+    pls_string = f"""{y_col_short}
+    {scaler_var}
+    ---
+    Best model:
+    {grid_params}
+    ---
+    Features:
+    {X_cols_sfs}
+    ---
+    {scorer_label} grid search: {grid_score: .2f} ({best_scores_std: .2f})
+    R2 CV = {cv_val}: {r2_scores.mean(): .2f} ({r2_scores.std(): .2f})
+    RMSE CV = {cv_val}: {rmse_scores.mean(): .2f} ({rmse_scores.std(): .2f})
+    ---
+    R2 = {r2_s: .2f}
+    RMSE = {rmse_s: .2f}
+    MSE = {mse_s: .2f}
+    """
+
+    print(pls_string)
+    pls_fname = f"{y_col_short}_PLS.txt".replace(" ","")
+    save_to_txt(pls_fname, y_col_path, pls_string)
+
+    X_latents = pls.transform(X_pls_sfs)
+
+    if grid_params['clf__n_components']==1:
+            
+        fig, ax = plt.subplots(figsize = (8,6))
+        im = ax.scatter(X_latents[:,0], y_pls, s = 80, facecolor = "none",
+        edgecolor = "black")
+        ax.set(xlabel = f"$LV1$", ylabel = y_col_short)
+        plt.grid(which = "both", axis = "both")
+        plt.tight_layout()
+        image_name = y_col_path / (f"{y_col_short}_LatentVars1".replace(" ", "")+".png")
+        plt.savefig(image_name, facecolor='w')
+        plt.show()
+
+    else:
+
+        for i in range(X_latents.shape[1]-1):
+            
+            pca_biplot(X_latents[:,i], X_latents[:,i+1], f"LV{i+1}", f"LV{i+2}", c_val = y_pls,
+            c_label = y_col_short,
+            save_fname = f"{y_col_short}_LatentVars{i+1}", save_path = y_col_path)
 
 #%% plot time variant loadings 
+# df_timevar = loadings_df.drop(X_cols_ps, axis = 0) # drop non-process variables
+# df_timevar["Time (H)"] = df_timevar["Feature"].apply(lambda x: float(x.split(", t=")[-1])) # split time and parameter
+# # pivot by time and parameter
+# df_timevar_melt = pd.melt(df_timevar, id_vars=["Parameter", "Time (H)"], value_vars = pca_cols,
+# var_name="PC", value_name='LOADINGS', col_level=None, ignore_index=True)
+# df_timevar_melt["LOADINGS"] = df_timevar_melt["LOADINGS"].astype(float)
+# df_timevar_melt["LOADINGS ABS"] = df_timevar_melt["LOADINGS"].abs()
+# df_timevar_melt.sort_values(by = ["Parameter", "Time (H)"], ascending= True, inplace = True)
+
 # max_loading = (loadings_df[pca_cols].abs().max().max())
 # loadings_range = [max_loading*-1, max_loading]
 # c_range = [max_loading*-0.5, max_loading*0.5]
@@ -959,7 +1113,7 @@ print(all_r2)
     #     "Time (h)", "Loading", clims = c_range, save_fname = f"VarLoadings{pc}",
     #     save_path = pca_path)
 
-#%%
+#%% PC loadings
 df_timeinvar = loadings_df.loc[loadings_df.index.isin(X_cols_ps)]
 df_timeinvar.sort_values(by = ["Feature"], ascending = True, inplace = True)
 df_timeinvar_melt = pd.melt(df_timeinvar,
@@ -967,57 +1121,81 @@ id_vars=["Parameter"],
 value_vars=pca_cols,
 var_name="PC",
 value_name="Loading", ignore_index = False)
+
+loading_thresh = 0.25
+df_timeinvar_melt["Over Thresh"] = np.where(df_timeinvar_melt["Loading"].abs() > loading_thresh, 1, 0)
+
 # contribution_chart(df_timeinvar.Feature, df_timeinvar[pc], "Loadings", xlim = loadings_range,
 #         save_path = pca_path, save_fname = f"InvLoadings{pc}")
-
 ax = sns.catplot(kind = "bar",data = df_timeinvar_melt,
-    y = "Parameter", x = "Loading", col = "PC",
-    hue = "PC", legend = False, sharey = True,palette = tab10_colors_list, dodge = False,
+    y = "Parameter", x = "Loading", col = "PC",col_wrap = 2,
+    hue = "Over Thresh", legend = False, sharey = True,
+    palette = ["white","grey"], edgecolor = "black", # tab10_colors_list
+    dodge = False,
     height = 8, aspect = 1.25)
 
 ax.set_titles(col_template="{col_name}")
 ax.set(ylabel = "")
-
 image_name = pca_path / ("PCLoadings".replace(" ", "")+".png")
 plt.savefig(image_name, facecolor='w')
 plt.show()
 
-#%% visualisation pca
-def lin_reg(x_vals, y_vals):
-    m, c, r_value, p_value, std_err = linregress(x_vals, y_vals)
-    x_func = np.linspace(x_vals.min(), x_vals.max(), 50)
-    y_func = m * x_func + c
-    y_pred = m * x_vals + c
-    r2_pred = r2_score(y_vals, y_pred)
-    rmse_pred = abs(mean_squared_error(y_vals, y_pred))**0.5
+#%% pc heat map
+corr = pca_df[pca_cols + features].corr()
+corr = corr[pca_cols].loc[corr.index.isin(features)]
 
-    return m, c, std_err, r2_pred, rmse_pred, x_func, y_func
-
-# scatter_2D(pca_df["PC2"], pca_df['Volumetric Activity (U/ml)'],
-# x_label = pca_exp_cols[1], y_label = 'Volumetric Activity (U/ml)', save_fname = f"VolumetricActivity_PC2", save_path = pca_path)
-
-dydx, inter, std_error, r2, rmse, x_range, y_range = lin_reg(pca_df["PC2"], pca_df['Volumetric Activity (U/ml)'])
-confidence_interval = 1.96*std_error
-y_conf = np.array([y_range - confidence_interval, y_range + confidence_interval]).T
-print(f"R2 {r2:.2f}, RMSE {rmse: .2f}")
-
-fig, ax = plt.subplots(figsize = (10,6))
-ax.plot(x_range, y_range,
-    linestyle = "--", color = "black")
-ax.fill_between(x_range, y_conf[:,1], y_conf[:, 0],
-    color = "grey", alpha = 0.2, label = "95% CI")
-ax.scatter(pca_df["PC2"], pca_df['Volumetric Activity (U/ml)'],
-        s = 60, linewidth = 1.4,
-        edgecolor = "black", facecolor = "none")
-ax.set(ylabel = 'Volumetric Activity (U/ml)', xlabel = pca_exp_cols[1])
+fig, ax = plt.subplots(figsize = (10,8))
+sns.heatmap(corr, linewidths=.5, vmin = -1, vmax = +1, annot = True,
+cmap = "coolwarm_r", cbar = False,fmt='.2f',ax = ax)
 plt.tight_layout()
-image_name = pca_path / ("VolumetricActivity_PC2".replace(" ", "")+".png")
+image_name = pca_path / ("PCHeatMap".replace(" ", "")+".png")
 plt.savefig(image_name, facecolor='w')
 plt.show()
 
+#%% PC biplots
+# biomass pc1 and pc4
 pca_biplot(pca_df["PC1"], pca_df["PC3"], pca_exp_cols[0], pca_exp_cols[2],
-c_val = pca_df['Biomass Density (g/l)'], c_label = "Biomass Density (g/l)",
+c_val = y_scaled[:,features.index('Biomass Density (g/l)')], c_label = "Normalised Biomass Density",
+cmap_var = "viridis_r",
 save_fname = f"BiomassDensity_PC1PC3", save_path = pca_path)
+
+pca_biplot(pca_df["PC1"], pca_df["PC3"], pca_exp_cols[0], pca_exp_cols[2],
+c_val = y_scaled[:,features.index('Volumetric Activity (U/ml)')], c_label = "Normalised Volumetric Activity",
+cmap_var = "viridis_r",
+save_fname = f"VolumetricActivity_PC1PC3", save_path = pca_path)
+
+#%% PC 3D scatter plots
+plt.rcParams.update({'font.size': 12})
+
+fig = plt.figure(figsize=(12,6))
+ax1 = fig.add_subplot(1, 2, 2, projection='3d')
+
+ax1.scatter(pca_df["PC3"], pca_df["PC1"], y_scaled[:,features.index('Volumetric Activity (U/ml)')],
+    label = "Volumetric Activity",
+    color = tab10_colors_list[1], edgecolor = tab10_colors_list[1], marker = 'o', s = 150, alpha = 0.5, linewidth = 1.5)
+
+ax2 = fig.add_subplot(1, 2, 1, projection='3d', sharez = ax1)
+ax2.scatter(pca_df["PC3"], pca_df["PC1"], y_scaled[:,features.index('Biomass Density (g/l)')],
+    label = "Biomass Density",
+    color = tab10_colors_list[0], edgecolor = tab10_colors_list[0], marker = 'o', s = 150, alpha = 0.5, linewidth = 1.5)
+
+handles, labels = [], []
+for ax, y_col in zip([ax1, ax2], ["Volumetric Activity", "Biomass Density"]):
+    ax.view_init(20, 60)
+
+    ax.set(xlabel = "PC3", ylabel = "PC1", zlabel = y_col, 
+    zlim = [-2,2], xlim = [-3.5,3.5], ylim = [-3.,3.])
+
+    h, l = ax.get_legend_handles_labels()
+    handles.append(h[0])
+    labels.append(l[0])
+
+# ax2.legend(handles= handles, labels = labels, loc = "upper left",
+#     framealpha = 1, shadow = False)
+
+image_name = pca_path / ("PC1PC3_3DScatter".replace(" ", "")+".png")
+plt.savefig(image_name, facecolor='w')
+plt.show()
 
 #%% viz
 y = df[features].to_numpy()
@@ -1049,16 +1227,10 @@ y_conf = np.array([y_pred_log - confidence_interval, y_pred_log + confidence_int
 A_exp = 10**log_A_exp
 print(f"R2: {r2_exp: .2f}\nBD = (P/V)**{n_exp: .2f} + {A_exp: .2f}")
 
-from scipy import stats
 alpha_stats = 0.05
 CI = [n_exp + std_err*t for t in stats.t.interval(alpha_stats/2, len(x_c_y[:,0])-2)]
 halfwidth = std_err*stats.t.interval(alpha_stats/2, len(x_c_y[:,0])-2)[1]
 n_exp_str = r'$\alpha$={:.2f}($\pm${:.3f})'.format(n_exp, halfwidth)
-
-# std_error_slope = se_slope(np.log10(x_c_y[:,2]), y_pred_exp, x_c_y[:,0])
-# slope_error = 1.96 * std_error_slope
-# max_slope = n_exp + slope_error
-# print(slope_error)
 
 n_35 = 0.35 # Gill et al 2008
 n_07 = 0.7 # Linek et al 2004, Van't Riet 1979
@@ -1096,6 +1268,71 @@ plt.tight_layout()
 image_name = output_path / ("BiomassDensity_PowerScatter27KLA".replace(" ", "")+".png")
 plt.savefig(image_name, facecolor='w')
 plt.show()
+
+#%% vol activity plots
+x_vals = np.log10(X[:, X_cols.index("Power (W/m3), t=7.0")])
+y_vals = np.log10(y[:, features.index('Volumetric Activity (U/ml)')])
+
+q, q_int, std_error, r2_value, rmse_value, x_func, y_func = lin_reg(x_vals, y_vals)
+confidence_interval = 1.96*std_error
+y_conf = np.array([y_func - confidence_interval, y_func + confidence_interval]).T
+print(f"R2 {r2_value:.2f}, RMSE {rmse_value: .2f}\nGrad = **{q:.2f}")
+
+fig, ax = plt.subplots(figsize = (10,6))
+
+ax.scatter(
+    X[(X[:,X_cols.index("Scale (l)")] == 1) & (X[:,X_cols.index("Antifoam")] == 0), X_cols.index("Power (W/m3), t=7.0")],
+    y[(X[:,X_cols.index("Scale (l)")] == 1) & (X[:,X_cols.index("Antifoam")] == 0), features.index('Volumetric Activity (U/ml)')],
+    marker = marker_list[0], facecolor = "none", label = "1 l",
+    color = tab10_colors_list[0], s = 150, alpha = 1, linewidth = 2)
+ax.scatter(
+    X[(X[:,X_cols.index("Scale (l)")] == 1) & (X[:,X_cols.index("Antifoam")] == 1), X_cols.index("Power (W/m3), t=7.0")],
+    y[(X[:,X_cols.index("Scale (l)")] == 1) & (X[:,X_cols.index("Antifoam")] == 1), features.index('Volumetric Activity (U/ml)')],
+    marker = marker_list[0], facecolor = "none", label = "1 l (A)",
+    color = tab10_colors_list[1], s = 150, alpha = 1, linewidth = 2)
+
+ax.scatter(
+    X[(X[:,X_cols.index("Scale (l)")] == 42) & (X[:,X_cols.index("Antifoam")] == 0), X_cols.index("Power (W/m3), t=7.0")],
+    y[(X[:,X_cols.index("Scale (l)")] == 42) & (X[:,X_cols.index("Antifoam")] == 0), features.index('Volumetric Activity (U/ml)')],
+    marker = marker_list[1], facecolor = "none", label = "42 l",
+    color = tab10_colors_list[0], s = 150, alpha = 1, linewidth = 2)
+
+ax.scatter(
+    X[(X[:,X_cols.index("Scale (l)")] == 42) & (X[:,X_cols.index("Antifoam")] == 1), X_cols.index("Power (W/m3), t=7.0")],
+    y[(X[:,X_cols.index("Scale (l)")] == 42) & (X[:,X_cols.index("Antifoam")] == 1), features.index('Volumetric Activity (U/ml)')],
+    marker = marker_list[1], facecolor = "none", label = "42 l (A)",
+    color = tab10_colors_list[1], s = 150, alpha = 1, linewidth = 2)
+
+ax.plot(10**x_func, 10**y_func, linestyle = "--", color = "black")
+ax.fill_between(10**x_func, 10**y_conf[:,1], 10**y_conf[:, 0],
+    color = "grey", alpha = 0.2, label = "95% CI")
+
+plt.legend(loc="upper left", frameon = False, ncol = 1, 
+            bbox_to_anchor=(1., 1.), borderaxespad=0.)
+ax.grid(which = "both", axis = "both")
+
+ax.set(xlabel = "Power, t=7.0 (W/m$^{3}$)", ylabel = "Volumetric Activity (U/ml)", xscale = "log", yscale ="log")
+# ax.grid(which = "both", axis = "both")
+
+plt.tight_layout()
+image_name = output_path / ("VolumetricActivity_Power7".replace(" ", "")+".png")
+plt.savefig(image_name, facecolor='w')
+plt.show()
+
+#%% harvest wcw plots
+scatter_2D(X_scaled[:, X_cols.index("OU Total, tf=12.0")],y_scaled[:, features.index('Harvest WCW (g/l)')],
+"OU Total, tf=12.0","Harvest WCW",
+c_val = X_scaled[:, X_cols.index("Feed Total, tf=2.0")],
+c_label = "Feed Total, tf=2.0",
+save_fname = "HarvestWCW_FeedTotalOUTotal", save_path = output_path)
+
+scatter_2D(X_scaled[:, X_cols.index("Feed Total, tf=12.0")], y_scaled[:, features.index('Harvest WCW (g/l)')],
+"Feed Total, tf=12.0","Harvest WCW")
+
+#save_fname = "HarvestWCW_FeedTotalOUTotal", save_path = output_path)
+
+
+#%%
 
 #%% specific oxygen uptake rate
 df_plot = df.dropna(subset = ['Biomass Density (g/l)'])
@@ -1150,128 +1387,6 @@ image_name = output_path / ("BiomassDensityOUTotal".replace(" ", "")+".png")
 plt.savefig(image_name, facecolor='w')
 plt.show()
 
-
-#%% vol activity plots
-import scipy
-
-
-
-
-#%%
-# feature_combs = ['Base (2h MA), t=12.0',"Power (W/m3), t=12.0",'Base (2h MA), t=9.0',"Power (W/m3), t=9.0"]
-
-# print("R2 with Volumetric Activity")
-# for f in feature_combs:
-#     print(f, " ", get_r2(X_scaled[:,X_cols.index(f)], y_scaled[:,features.index('Volumetric Activity (U/ml)')]))
-
-# plt.rcParams.update({'font.size': 12})
-
-# fig = plt.figure(figsize=(12,6))
-# ax1 = fig.add_subplot(1, 2, 2, projection='3d')
-# ax1.scatter(X_scaled[:,X_cols.index('Base (2h MA), t=12.0')],
-#     X_scaled[:,X_cols.index("Power (W/m3), t=12.0")],
-#     y_scaled[:,features.index('Volumetric Activity (U/ml)')],
-#     label = "12 hours",
-#     color = tab10_colors_list[1], edgecolor = tab10_colors_list[1], marker = 'o', s = 150, alpha = 0.5, linewidth = 1.5)
-
-# ax2 = fig.add_subplot(1, 2, 1, projection='3d')
-# ax2.scatter(X_scaled[:,X_cols.index('Base (2h MA), t=9.0')],
-#     X_scaled[:,X_cols.index("Power (W/m3), t=9.0")],
-#     y_scaled[:,features.index('Volumetric Activity (U/ml)')],
-#     label = "9 hours",
-#     color = tab10_colors_list[0], edgecolor = tab10_colors_list[0], marker = 'o', s = 150, alpha = 0.5, linewidth = 1.5)
-
-# handles, labels = [], []
-# for ax in [ax1, ax2]:
-#     ax.set(xlabel = "Base (2h MA)", ylabel = "Specific Power", zlabel = 'Volumetric Activity (U/ml)')
-#     h, l = ax.get_legend_handles_labels()
-#     handles.append(h[0])
-#     labels.append(l[0])
-
-# ax2.legend(handles= handles, labels = labels, loc = "upper left",
-#     framealpha = 1, shadow = False)
-
-# image_name = output_path / ("VolumetricActivity_BasePowert9t12".replace(" ", "")+".png")
-# plt.savefig(image_name, facecolor='w')
-# plt.show()
-
-# power (W/m3), t=9.0
-# antifoam,  X[:,X_cols.index('antifoam')] == 1]
-# scale (l) X[:,X_cols.index('antifoam')] == 42]
-# base ?
-def basic_scatter(dataFrame, x_string, y_string, z_string = None,
-                   marker_size = 50, y_limits = None, x_limits = None,
-                   save_fname = None, save_path = None):
-
-    fig, ax = plt.subplots(figsize = (7,5))
-    
-    if z_string:
-        z_list = dataFrame[z_string].unique()
-        for i, z in enumerate(z_list):
-            x_vals = dataFrame[x_string].loc[dataFrame[z_string] == z]
-            y_vals = dataFrame[y_string].loc[dataFrame[z_string] == z]
-
-            ax.scatter(x_vals ,y_vals,
-                    color = tab10_colors_list[i], marker = marker_list[i], facecolor = "none",
-                    label = str(z), s = marker_size)
-            
-        ax.legend(title = z_string, loc = "best",
-                  framealpha = 1, shadow = False)
-    
-    else:
-        ax.scatter(dataFrame[x_string] ,dataFrame[y_string],
-                color = tab10_colors_list[0], marker = marker_list[0], facecolor = "none",
-                s = marker_size)
-        
-    # ax.grid(which = "both", axis = "y")
-    ax.set(ylim = y_limits, xlim = x_limits,
-           ylabel = y_string, xlabel = x_string)
-    
-    plt.tight_layout()
-    
-    if save_path and save_fname:
-        image_name = save_path / (save_fname.replace(" ", "")+".png")
-        plt.savefig(image_name, facecolor='w')
-    
-    plt.show()
-
-fig, ax = plt.subplots(figsize = (10,6))
-
-ax.scatter(
-    X_scaled[(X[:,X_cols.index("Scale (l)")] == 1) & (X[:,X_cols.index("Antifoam")] == 0), X_cols.index("Power (W/m3), t=9.0")],
-    y_scaled[(X[:,X_cols.index("Scale (l)")] == 1) & (X[:,X_cols.index("Antifoam")] == 0), features.index('Volumetric Activity (U/ml)')],
-    marker = marker_list[0], facecolor = "none", label = "1 l",
-    color = tab10_colors_list[0], s = 150, alpha = 1, linewidth = 2)
-ax.scatter(
-    X_scaled[(X[:,X_cols.index("Scale (l)")] == 1) & (X[:,X_cols.index("Antifoam")] == 1), X_cols.index("Power (W/m3), t=9.0")],
-    y_scaled[(X[:,X_cols.index("Scale (l)")] == 1) & (X[:,X_cols.index("Antifoam")] == 1), features.index('Volumetric Activity (U/ml)')],
-    marker = marker_list[0], facecolor = "none", label = "1 l (A)",
-    color = tab10_colors_list[1], s = 150, alpha = 1, linewidth = 2)
-
-ax.scatter(
-    X_scaled[(X[:,X_cols.index("Scale (l)")] == 42) & (X[:,X_cols.index("Antifoam")] == 0), X_cols.index("Power (W/m3), t=9.0")],
-    y_scaled[(X[:,X_cols.index("Scale (l)")] == 42) & (X[:,X_cols.index("Antifoam")] == 0), features.index('Volumetric Activity (U/ml)')],
-    marker = marker_list[1], facecolor = "none", label = "42 l",
-    color = tab10_colors_list[2], s = 150, alpha = 1, linewidth = 2)
-
-ax.scatter(
-    X_scaled[(X[:,X_cols.index("Scale (l)")] == 42) & (X[:,X_cols.index("Antifoam")] == 1), X_cols.index("Power (W/m3), t=9.0")],
-    y_scaled[(X[:,X_cols.index("Scale (l)")] == 42) & (X[:,X_cols.index("Antifoam")] == 1), features.index('Volumetric Activity (U/ml)')],
-    marker = marker_list[1], facecolor = "none", label = "42 l (A)",
-    color = tab10_colors_list[3], s = 150, alpha = 1, linewidth = 2)
-
-plt.legend(title = "Scale (Antifoam)", loc = "best",
-    framealpha = 1, shadow = False)
-ax.set(xlabel = "Power, t=9.0", ylabel = "Volumetric Activity", xlim = [-0.1,1.1], ylim = [-0.1,1.1])
-# ax.grid(which = "both", axis = "both")
-
-plt.tight_layout()
-image_name = output_path / ("VolumetricActivity_Power9".replace(" ", "")+".png")
-plt.savefig(image_name, facecolor='w')
-plt.show()
-
-scatter_2D(X_scaled[:, X_cols.index("Power (W/m3), t=12.0")],
-y_scaled[:, features.index('Volumetric Activity (U/ml)')], "x", "y")
 
 #%%
 fig, ax = plt.subplots(figsize = (10,6))
@@ -1349,8 +1464,6 @@ columns = features)
 
 df_scaled = pd.merge(left = df_X_scaled, right = df_y_scaled, left_index = True, right_index = True)
 df_scaled.index = df.index
-
-#%%
 
 #%%
 basic_scatter(df, "dOUR/dt (2h MA), t=27.0", 'Volumetric Activity (U/ml)', z_string = "GMSMK Mod1 Prod Media")
@@ -1438,296 +1551,6 @@ plt.tight_layout()
 image_name = output_path / ("HarvestWCW_PowerProdMediat27".replace(" ", "")+".png")
 plt.savefig(image_name, facecolor='w')
 plt.show()
-
-#%%
-X_cols = sorted(X_cols)
-# X_cols_manip = [
-#  'Antibiotic_Kan',
-#  'Feed Media_F04',
-#  'Feed Seq Red at Induct (%)',
-#  'Feed Seq Step_Steps',
-#  'Feed Total, t=12.0',
-#  'Feed Total, t=22.0',
-#  'Feed Total, t=27.0',
-#  'Feed Total, t=35.0',
-#  'Feed Total, t=4.0',
-#  'Feed Total, t=45.0',
-#  'Feed Total, t=9.0',
-#  'Glycerol ID_MGS-0467',
-#  'Induction Temperature (°C)',
-#  'Induction pH',
-#  'Production Media_gMSMK',
-#  'Production Media_gMSMK mod1',
-#  'Production Media_gMSMK mod2',
-#  'Scale (l)',
-#  'Temperature (°C), t=12.0',
-#  'Temperature (°C), t=22.0',
-#  'Temperature (°C), t=27.0',
-#  'Temperature (°C), t=35.0',
-#  'Temperature (°C), t=4.0',
-#  'Temperature (°C), t=45.0',
-#  'Temperature (°C), t=9.0',
-#  'pH, t=12.0',
-#  'pH, t=22.0',
-#  'pH, t=27.0',
-#  'pH, t=35.0',
-#  'pH, t=4.0',
-#  'pH, t=45.0',
-#  'pH, t=9.0']
-
-# X_cols_manip = [
-#  'Antibiotic_Kan',
-#  'Feed Media_F04',
-#  'Feed Seq Red at Induct (%)',
-#  'Feed Seq Step_Steps',
-#  'Feed Total, t=12.0',
-#  #'Feed Total, t=22.0',
-#  'Feed Total, t=27.0',
-#  'Feed Total, t=35.0',
-#  #'Feed Total, t=4.0',
-#  #'Feed Total, t=45.0',
-#  #'Feed Total, t=9.0',
-#  'Glycerol ID_MGS-0467',
-#  'Induction Temperature (°C)',
-#  #'Induction pH',
-#  'Production Media_gMSMK',
-#  'Production Media_gMSMK mod1',
-#  'Production Media_gMSMK mod2',
-#  'Scale (l)']
-
-#%%
-
-#%% SFS-PLS
-def pls_rfe(train,labels, cv_folds = 5, score_metric = 'neg_root_mean_squared_error'):
-    """
-    Returns: reg_est, reg_params, reg_rmse, labels_pred
-    https://www.kaggle.com/miguelangelnieto/pca-and-regression
-    """
-    results={}
-
-    def test_model(clf):
-        
-        cv = KFold(n_splits= cv_folds,shuffle=True,random_state=45)
-        # r2 = make_scorer(r2_score)
-        scores = (cross_val_score(clf, train, labels, cv=cv,scoring='neg_root_mean_squared_error'))
-        
-        return abs(scores.mean())
-  
-    def rfe_grid_search(r_model, r_params):
-        
-        r = GridSearchCV(r_model, r_params,
-            scoring = 'neg_root_mean_squared_error')
-        r.fit(train, labels)
-        
-        return r#, r.best_estimator_, r.best_params_
-    
-    #"r2"
-    est = PLSRegression()
-    selector = feature_selection.SequentialFeatureSelector(est, scoring = score_metric)#feature_selection.RFE(est, step = 1)
-    pipe_params = [('feat_selection',selector),('clf', est)]
-    pipe = pipeline.Pipeline(pipe_params)
-
-    clf_parameters = {'feat_selection__n_features_to_select': list(range(1,6)),
-    'clf__n_components': list(range(1,4))}
-
-    sfs_grid = GridSearchCV(pipe, clf_parameters,
-            scoring = score_metric, cv = cv_val) # 
-    sfs_grid.fit(train, labels)
-
-    best_pls = sfs_grid.best_estimator_['clf']
-    best_featselect = sfs_grid.best_estimator_['feat_selection']
-    best_params = sfs_grid.best_params_
-    best_score = sfs_grid.best_score_ 
-
-    print("Grid search complete.")
-        
-    return sfs_grid, best_featselect, best_pls, best_params, best_score
-
-#'Biomass Density (g/l)'"Volumetric Activity (U/ml)""Harvest WCW (g/l)"
-X_cols_new = X_cols #X_cols_manip#X_cols
-
-scorer_var = 'neg_root_mean_squared_error'#'mean_squared_error'#'neg_root_mean_squared_error'#"r2"
-cv_val = 7
-
-n_features = len(X_cols_new)
-for y_col in features[0:1]:
-    y_col_short = y_col.split(" (")[0].title()#.replace(" ","")
-    y_units = y_col.split(" ")[-1]
-    y_col_path = create_dir(y_col_short + "_" + scorer_var, output_path)
-
-    X_y_df = df[X_cols_new + [y_col]].dropna(how = "any", axis = 0)
-    y = X_y_df[y_col].to_numpy().reshape(-1, 1)
-    scaler_y = MinMaxScaler()
-    scaler_y.fit(y)
-    y_pls = scaler_y.transform(y)
-
-    X = X_y_df[X_cols_new].to_numpy()
-    scaler_X = MinMaxScaler()
-    scaler_X.fit(X) # get mean and std dev for scaling
-    X_pls = scaler_X.transform(X) # scale
-
-    n_obs = len(y)
-    print(f"\n\n\n-------\n{n_features} features, {n_obs} datapoints")
-
-    t0 = time.time()
-    grid, featselect, pls, grid_params, grid_score = pls_rfe(X_pls, y_pls, cv_folds = cv_val,
-        score_metric = scorer_var)
-    run_time = (time.time() - t0) / 60
-    print(f"{run_time: .1f} mins")
-
-    pls_coef = pls.coef_
-    pls_loadings = pls.x_loadings_
-    featselect_sup = featselect.support_
-    grid_score = abs(grid_score)
-
-    grid_results = pd.DataFrame(data = grid.cv_results_)
-    results_features = grid_results.groupby("param_feat_selection__n_features_to_select")["rank_test_score"].min()
-    results_features = grid_results.loc[grid_results["rank_test_score"].isin(results_features)]
-    results_features.set_index("param_feat_selection__n_features_to_select", drop = True, inplace = True)
-    results_features.sort_index(ascending=True, inplace = True)
-    results_features["mean_test_score"] = results_features["mean_test_score"].abs()
-    best_scores_std = results_features["std_test_score"].loc[results_features["rank_test_score"] == 1].abs().mean()
-    # results_features["mean_test_score"] = scaler_y.inverse_transform(results_features["mean_test_score"].to_numpy())
-
-    scatter_line_plot(results_features.index, results_features["mean_test_score"],
-        "N Features", f"RMSE (CV={cv_val})", y_std = results_features["std_test_score"], y_lims = None,
-        y_scale = 'linear', save_fname = f"{y_col_short}_PLSRMSE", save_path = y_col_path)
-
-    df_coefs = pd.DataFrame(data = [X_cols_new, featselect_sup], index = ["Parameter", "Selected"]).T
-    df_coefs = df_coefs.loc[df_coefs["Selected"] == True]
-    X_cols_sfs = list(df_coefs["Parameter"]) # selected features
-    X_pls_sfs = X_pls[:, featselect_sup == True]
-    df_coefs["Coefficient"] = pls_coef[:,0]
-    df_coefs = df_coefs.sort_values(by = ["Coefficient"], key = abs, ascending = False)
-    #df_coefs = df_coefs.loc[df_coefs["Coefficient"].abs() > 0.05]
-    coefs_range = [-1,1]#[coefs_range*-1, coefs_range]
-    # contribution_chart(df_coefs["Parameter"], df_coefs["Coefficient"], "Coefficient", xlim = coefs_range,
-    #     save_path = output_path, save_fname = f"{y_col_short}_PLSCoefs{n_features}")
-
-    # loadings df
-    df_loadings = pd.DataFrame(data = pls_loadings, columns = ["PLS"+str(i+1) for i in range(len(pls_loadings.T))])
-    df_loadings["Parameter"] = X_cols_sfs
-    df_loadings_melt = pd.melt(df_loadings, id_vars = ["Parameter"], var_name = "Component", value_name = "Loading")
-    df_loadings_melt = df_loadings_melt.loc[df_loadings_melt["Loading"].abs() >0.025]
-    df_loadings["Time (h)"] = df_loadings["Parameter"].apply(lambda x: x.split(", t=")[-1])
-
-    col_wrap_var = 1 if len(pls_loadings.T) == 1 else 2
-    g = sns.catplot(kind = "bar", data = df_loadings_melt, y = "Parameter", x = "Loading", col = "Component",
-    orient = "h", hue = "Parameter", palette = tab10_colors_list, dodge = False, edgecolor = "black", aspect = 2, col_wrap = col_wrap_var, legend = False)
-    g.set_axis_labels("Loading","")
-    g.set_titles("{col_name}")
-    g.tight_layout()
-    # plt.grid(which = "both", axis = 'x')
-    save_fname = f"{y_col_short}_PLSLoadings"
-    image_name = y_col_path / (save_fname.replace(" ", "")+".png")
-    plt.savefig(image_name, facecolor='w')
-    plt.show()
-
-    # scatter important parameters
-    top_params = list(df_coefs["Parameter"][:])
-    plt.rcParams.update({'font.size': 14})
-    subplots_scatter(X_y_df, top_params, y_col, n_cols = 4,
-            title_var = None, save_fname = f"{y_col_short}_PLSScatterParams", save_path = y_col_path)
-    plt.rcParams.update({'font.size': 16})
-
-    y_pred_nonscale = pls.predict(X_pls_sfs)#cross_val_predict(pls, X_pls_sfs, y_pls, cv = cv_val)
-    y_pred = scaler_y.inverse_transform(y_pred_nonscale)
-    y_res = standardised_res(y[:,0], y_pred[:,0])
-
-    r2_s = r2_score(y, y_pred)
-    mse_s = mean_squared_error(y, y_pred)
-    rmse_s = (abs(mse_s))**0.5
-
-    r2_scores = cross_val_score(pls, X_pls_sfs, y_pls, cv = cv_val, scoring= "r2")#.mean()
-    rmse_scores = abs(cross_val_score(pls, X_pls_sfs, y_pls, cv = cv_val, scoring= 'neg_root_mean_squared_error'))
-
-    parity_res_plots(y, y_pred, y_res,
-        y_col, y_val_test = None, y_val_test_pred = None,
-        save_fname = f"{y_col_short}_PLSParRes", save_path = y_col_path,
-        zero_axis_lim = False)
-
-    pls_string = f"""Best model: {grid_params}
-    Features: {X_cols_sfs}
-    Best RMSE grid search: {grid_score: .2f} ({best_scores_std: .2f})
-    R2 CV = {cv_val}: {r2_scores.mean(): .2f} ({r2_scores.std(): .2f})
-    RMSE CV = {cv_val}: {rmse_scores.mean(): .2f} ({rmse_scores.std(): .2f})
-    R2 = {r2_s: .2f}
-    RMSE = {rmse_s: .2f} {y_units}
-    MSE = {mse_s: .2f} {y_units}**2
-    """
-    print(pls_string)
-    pls_fname = f"{y_col_short}_PLS.txt".replace(" ","")
-    save_to_txt(pls_fname, y_col_path, pls_string)
-
-    X_latents = pls.transform(X_pls_sfs)
-
-    if grid_params['clf__n_components']==1:
-            
-        fig, ax = plt.subplots(figsize = (8,6))
-
-        # axis_lims = [axis_lim*-1, axis_lim]
-        im = ax.scatter(X_latents[:,0], y_pls, s = 80, facecolor = "none",
-        edgecolor = "black")
-        #fig.colorbar(im, ax=ax, label = y_col_short)
-        #ax.plot(axis_lims, [0,0], color = "black", linewidth = 1, linestyle = "--")
-        #ax.plot([0,0],axis_lims, color = "black", linewidth = 1, linestyle = "--")
-
-        ax.set(#xlim = axis_lims, ylim = axis_lims,
-        xlabel = f"$LV{i+1}$", ylabel = y_col_short)
-        plt.grid(which = "both", axis = "both")
-
-        plt.tight_layout()
-        image_name = y_col_path / (f"{y_col_short}_LatentVars{i}".replace(" ", "")+".png")
-        plt.savefig(image_name, facecolor='w')
-        plt.show()
-        #axis_lim = np.ceil(abs(X_latents).max())
-        #axis_lims = [axis_lim*-1, axis_lim]
-
-    else:
-
-        for i in range(X_latents.shape[1]-1):
-            
-            pca_biplot(X_latents[:,i], X_latents[:,i+1], f"LV{i+1}", f"LV{i+2}", c_val = y_pls,
-            c_label = y_col_short,
-            save_fname = f"{y_col_short}_LatentVars{i+1}", save_path = y_col_path)
-
-            # fig, ax = plt.subplots(figsize = (8,6))
-
-            # # axis_lims = [axis_lim*-1, axis_lim]
-            # im = ax.scatter(X_latents[:,i], X_latents[:,i+1],c = y_pls, s = 80, 
-            # alpha = 0.6, edgecolor = "black")
-            # fig.colorbar(im, ax=ax, label = y_col_short)
-            # #ax.plot(axis_lims, [0,0], color = "black", linewidth = 1, linestyle = "--")
-            # #ax.plot([0,0],axis_lims, color = "black", linewidth = 1, linestyle = "--")
-
-            # ax.set(#xlim = axis_lims, ylim = axis_lims,
-            # xlabel = f"$LV{i+1}$", ylabel = f"$LV{i+2}$")
-            # plt.grid(which = "both", axis = "both")
-
-            # plt.tight_layout()
-            # image_name = y_col_path / (f"{y_col_short}_LatentVars{i+1}".replace(" ", "")+".png")
-            # plt.savefig(image_name, facecolor='w')
-            # plt.show()
-
-            # del X_latents
-
-# plt.plot(results_features.index, results_features*-1, marker = "o", color = "black")
-# plt.ylabel("RMSE")
-# plt.xlabel("N Features")
-# # plt.ylim([-5,1])
-# plt.grid(which = "both", axis = "both")
-# plt.tight_layout()
-# plt.show()
-
-# screen ml
-# df_nrmse = lets_try(X_pls, y_pls, cv_folds=cv_val)
-# sns_barplot(df_nrmse, "RMSE","Method", orient_var = "h",
-#     title_var = None, save_fname = f"{y_col_short}ModelScreening", save_path = None)#output_path
-
-#%%
-
-
-
 
 # scatter_2D(X_latents[:,0], X_latents[:,1], x_label = "LV1", y_label = "LV2", xlim = [-2.5, 2.5], ylim = [-2.5, 2.5],
 # c_val = y_pls, c_label = y_col_short, fig_size = (8,7), save_fname = f"{y_col_short}_LatentVars", save_path = y_col_path)
