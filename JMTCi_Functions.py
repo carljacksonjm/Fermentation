@@ -4,96 +4,66 @@ import pandas as pd
 import math
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pickle
+from pathlib import Path
+import os
 
 from scipy.stats import linregress
 from sklearn.metrics import r2_score
 from sklearn.metrics import mean_squared_error
-
-#%%
-# jm_colors_dict = {
-#     'JM Blue':'#1e22aa',
-#     'JM Purple':'#e50075',
-#     'JM Cyan':'#00abe9','JM Green':'#9dd3cb',
-#     'JM Magenta':'#e3e3e3',
-#     'JM Light Grey':'#575756',
-#     'JM Dark Grey':'#6e358b'
-# }
-# jm_colors_list = list(jm_colors_dict.values())
-# cb_colors_list = sns.color_palette("muted")+sns.color_palette("muted")  # deep, muted, pastel, bright, dark, and colorblind
-# hls_colors_list = sns.color_palette("hls", 8) + sns.color_palette("hls", 8)
-
-tab10_colors_list = sns.color_palette("tab10") + sns.color_palette("tab10")
-marker_list = ["o","v","D","x","X","<","8","s","^","p","P","*","h","H","+","d","|","_"]
-linestyle_list = ['-','--', '-.','-','--', '-.','-','--', '-.']
+from sklearn.decomposition import PCA
 
 #%% functions
-def clean_col(bad_col):
+def tip_speed(D, N):
+    """Tip speed (m/s)
+    D: Impeller diameter (m)
+    N: Rotational speed (1/s)"""
+    
+    return math.pi * D * N
 
-    def replace_all(text, dic):
-        for i, j in dic.items():
-            text = text.replace(i, j)
-        return text
-
-    replace_dict = {"]":"",
-                    "_":" ",
-                    ",":" ",
-                    "-":" ",
-                    ".":" "
-                    }
-
-    #.replace(" ","_").replace("]","").replace(" ","")
-    good_col = replace_all(bad_col, replace_dict)
-    good_col = good_col.upper().replace(" ","_")
-
-    return good_col
-
-def remove_date(row_str):
-    if " " in row_str:
-        row_str = str(row_str).split(" ")[-1]
-    return str(row_str)
-
-def tip_speed(d, N):
-
-    return math.pi * d * N
-
-def P_per_V(N, d, V, Np, n_imps = 1, rho = 1e3):
-    """
-    N: Agiator speed Revs/s
-    d: Impeller diameter (m)
+def P_per_V(N, D, V, Np, n_imps = 1, rho = 1e3):
+    """Specific power (W/m3)
+    D: Impeller diameter (m)
+    N: Rotational speed (1/s)
     V: Liquid volume (m3)
     rho: Density (kg/m3)
     Np: Power number
+    n_imp: Number of impellers with sufficient spacing to be counted individually
+
     https://www.eppendorf.com/product-media/doc/en/633183/Fermentors-Bioreactors_Publication_BioBLU-c_Cell-Culture-Scale-Up-BioBLU-Single-Vessels.pdf
     Np = 1.27 for PBT, 5 for rushton
-    n_imp: Number of impellers with sufficient spacing to be counted individually
     """
-    P_per_V = n_imps * (Np * rho * (N)**3 * d**5 ) / V # W / m3
+    P_per_V = n_imps * (Np * rho * N**3 * D**5) / V
 
     return P_per_V
 
-def reynolds_mixing(d, N, rho = 1e3, mu = 8.9e-4):
+def reynolds_mixing(D, N, rho = 1e3, mu = 8.9e-4):
     """Reynolds number in mixing
-    d: Impeller diameter (m)
-    N: Agiator speed Revs/s
+    D: Impeller diameter (m)
+    N: Rotational speed (1/s)
     rho: Density (kg/m3)
     mu: Dynamic viscosity (Pa s)
     """
-    return d*N*rho/mu
+    return D**2*N*rho/mu
 
-def reynolds_chech(Re):
+def froude_mixing(N, D):
+    """Froude number in mixing
+    D: Impeller diameter (m)
+    N: Rotational speed (1/s)
+    """
+
+    return N**2 * D / 9.8
+
+def reynolds_check(Re, turb_min = 4000, lam_max = 10):
     
-    if Re > 4000:
+    if Re > turb_min:
         return "Turbulent"
-    elif Re < 2100:
+
+    elif Re < lam_max:
         return "Laminar"
+
     else:
         return "Transitional"
-
-def clean_nasty_floats(nasty_series):
-    good_series = nasty_series.replace("\t","", regex = True)
-    good_series = good_series.replace(" ","", regex = True)
-
-    return pd.to_numeric(good_series)
 
 def sns_lineplot(dataFrame, x_label, y_label, color_label,
 style_label = None, palette_var = 'viridis_r', legend_var = False, save_fname = None, save_path = None):
@@ -268,6 +238,132 @@ save_fname = None, save_path = None):
         plt.savefig(image_name, facecolor='w')
      
     plt.show()
+
+class DoPickle():
+    
+
+    def __init__(self, fname):
+        self.fname = fname
+
+    def pickle_save(self, pickle_obj):
+        with open(self.fname, 'wb') as f:
+            pickle.dump(pickle_obj, f)
+        return
+
+    def pickle_load(self):
+
+        with open(self.fname, 'rb') as f:
+            
+            return pickle.load(f)
+
+def create_dir(dir_name, parent_dir):
+
+    new_dir_path = Path(os.path.join(parent_dir, dir_name))
+    try:
+        os.mkdir(new_dir_path)
+    except OSError:
+        print(f"{dir_name} exists.")
+    
+    return new_dir_path
+
+class DoPCA():
+
+    def __init__(self, X_array):
+        self.X_array = X_array
+        cov_mat = np.cov(X_array.T) # covariance matrix
+        eigen_vals, eigen_vecs = np.linalg.eig(cov_mat) # decom
+        tot = sum(eigen_vals)
+        var_exp = [np.real(i) / np.real(tot) for i in sorted(eigen_vals, reverse=True)]
+        cum_var_exp = np.cumsum(var_exp)
+        self.var_exp = var_exp
+        self.cum_var_exp = cum_var_exp
+        # print(cum_var_exp[:10]*100)
+
+    def calibrate_pca(self, n_components):
+        pca = PCA(n_components = n_components)
+        pca_scores = pca.fit_transform(self.X_array) # PCA scores
+        pca_loadings = pca.components_.T # eigenvectors  aka loadings
+        eigen_values = pca.explained_variance_ # eigenvalues
+        print(f"X values: {self.X_array.shape}")
+        print(f"Eigenvectors (aka loadings): {pca_loadings.shape}\nEigenvals: {eigen_values.shape}\nScores: {pca_scores.shape}")
+        print("Variance explained ({0} components): {1: .2f} %".format(
+            n_components, self.cum_var_exp[n_components-1]*100))
+        components_cols = ["PC{0}".format(i) for i in range(1, pca_scores.shape[1]+1)]
+        components_var_exp = ["PC{0} ({1} %)".format(i, round(self.var_exp[i-1] * 100, 1)) for i in range(1, pca_scores.shape[1]+1)]
+        
+        return pca_loadings, pca_scores, eigen_values, components_cols, components_var_exp
+
+    def plot_var_explained(self, x_lim = [0,10], save_path = None,
+        save_fname = None):
+
+        fig, ax = plt.subplots(figsize = (8,8))
+        x_vals = range(1, len(self.cum_var_exp)+1)
+
+        ax.bar(x_vals, self.var_exp,
+                alpha=1, align='center',
+                label='Individual', color = 'grey')
+        ax.step(x_vals, self.cum_var_exp, where = "mid", label='Cumulative', color = "black")
+        
+        plt.legend(loc='best')
+        plt.grid(which = "both", axis = "y")
+        ax.set(xlim = x_lim, ylim = [0,1], ylabel = 'Variance Explained', xlabel = 'Principal Components')
+        plt.tight_layout()
+
+        if save_path and save_fname:
+            image_name = save_path / (save_fname.replace(" ", "")+".png")
+            plt.savefig(image_name, facecolor='w')
+        plt.show()
+
+def save_to_txt(save_fname, save_path, txt_string):
+    txt_file_name = save_path / save_fname
+    txt_file = open(txt_file_name, "w")
+    txt_file.write(txt_string)
+    txt_file.close()
+
+    print(f"{save_fname} saved.")
+    return
+
+def biplot(x_vals, y_vals, x_label, y_label, c_val = None, c_label = None,
+    cmap_var = "viridis_r", figsize_var = (10,6), save_fname = None, save_path = None):
+    
+    fig, ax = plt.subplots(figsize = figsize_var)
+
+    if c_label:
+        
+        edgecolor_var = "black"
+        im = ax.scatter(x_vals, y_vals, c = c_val,
+            cmap = cmap_var, marker = 'o', s = 100, alpha = 0.7,linewidth = 1.5,
+            edgecolor = edgecolor_var, label = c_label)
+            
+        fig.colorbar(im, ax=ax, label = f"{c_label}")
+    else:
+        edgecolor_var = "black"#None
+        im = ax.scatter(x_vals, y_vals, marker = 'o', s = 100,
+            facecolor = "none", linewidth = 1.5,
+            edgecolor = edgecolor_var)
+
+    ax.axhline(y=0, color = "black", linewidth = 1.)
+    ax.axvline(x=0, color = "black", linewidth = 1.)
+    ax.set(ylabel = y_label, xlabel = x_label)
+
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+
+    ax.tick_params(left = False)
+    ax.tick_params(bottom = False)
+
+    plt.tight_layout()
+    plt.grid(which = "both", axis = "both")
+    
+    if save_path and save_fname:
+        image_name = save_path / (save_fname.replace(" ","") + ".png")
+        
+        plt.savefig(image_name, facecolor='w')
+     
+    plt.show()
+
 
 # %%
 

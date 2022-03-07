@@ -20,9 +20,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import StandardScaler
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import cross_val_predict
+from sklearn.model_selection import train_test_split, cross_val_score, cross_val_predict
 from sklearn.feature_selection import RFECV
 from sklearn.feature_selection import RFE
 from sklearn.pipeline import make_pipeline
@@ -687,9 +685,6 @@ save_fname = None, save_path = None):
     
     fig, ax = plt.subplots(figsize = (10,6))
 
-    x_lims = [x_vals.min()*1.1, x_vals.max()*1.1]
-    y_lims = [y_vals.min()*1.1, y_vals.max()*1.1]
-
     if c_label:
         
         edgecolor_var = "black"
@@ -704,12 +699,11 @@ save_fname = None, save_path = None):
             facecolor = "none", linewidth = 1.5,
             edgecolor = edgecolor_var)
 
-    ax.plot(x_lims,[0,0], linestyle = "--", color = "black", linewidth = 1.5)
-    ax.plot([0,0], y_lims, linestyle = "--", color = "black", linewidth = 1.5)
+    ax.axhline(y=0, color = "black", linewidth = 1.5)
+    ax.axvline(x=0, color = "black", linewidth = 1.5)
+    ax.set(ylabel = y_label, xlabel = x_label)
 
-    ax.set(ylabel = y_label, xlabel = x_label, xlim = x_lims, ylim = y_lims)
     plt.tight_layout()
-
     plt.grid(which = "both", axis = "both")
     
     if save_path and save_fname:
