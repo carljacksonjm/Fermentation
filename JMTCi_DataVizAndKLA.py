@@ -6,6 +6,7 @@ pc values for each stage
 """
 #%% imports
 from locale import normalize
+from itsdangerous import NoneAlgorithm
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -17,29 +18,11 @@ from JMTCi_Functions import DoPickle
 import scipy
 from matplotlib.ticker import FormatStrFormatter
 
-# from sklearn.preprocessing import MinMaxScaler
-# from sklearn.preprocessing import StandardScaler
-# from sklearn.cross_decomposition import PLSRegression
-# from sklearn.metrics import mean_squared_error
-
-# from scipy.stats import linregress
 import warnings
 warnings.filterwarnings('ignore')
 
-# jm_colors_dict = {
-#     'JM Blue':'#1e22aa',
-#     'JM Purple':'#e50075',
-#     'JM Cyan':'#00abe9','JM Green':'#9dd3cb',
-#     'JM Magenta':'#e3e3e3',
-#     'JM Light Grey':'#575756',
-#     'JM Dark Grey':'#6e358b'
-# }
-#jm_colors_list = list(jm_colors_dict.values())
 cb_colors_list = sns.color_palette("muted")+sns.color_palette("muted")  # deep, muted, pastel, bright, dark, and colorblind
-# hls_colors_list = sns.color_palette("hls", 8) + sns.color_palette("hls", 8)
-# tab10_colors_list = sns.color_palette("tab10") + sns.color_palette("tab10")
-# marker_list = ["o","v","D","x","X","<","8","s","^","p","P","*","h","H","+","d","|","_"]
-# linestyle_list = ['-','--', '-.','-','--', '-.','-','--', '-.']
+
 plt.style.use('default')
 plt.rcParams.update({'font.size': 16})
 
@@ -48,14 +31,134 @@ def get_r2(x_vals, y_vals):
     slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(x_vals, y_vals)
     return slope, intercept, round(r_value**2,2)
 
+def scatter_contin(
+    dataFrame, x_col, y_col, hue_col, 
+    x_label, y_label, hue_label,
+    x_scale = "linear", y_scale = "linear", x_lim = None, y_lim = None,
+    fig_size_var = (12,8),palette_var = "viridis_r", hue_lim = [0,1], alpha_var = 0.5, marker_var = "s",
+    save_fname = None, save_path = None):
+    
+    fig, ax = plt.subplots(figsize = fig_size_var)
+    
+    m = ax.scatter(dataFrame[x_col], dataFrame[y_col], c = dataFrame[hue_col],
+    cmap = palette_var, vmin = hue_lim[0], vmax = hue_lim[1], alpha = alpha_var, s = 100, marker = marker_var)
+
+    ax.set(ylabel = y_label, xlabel = x_label, xscale = x_scale, yscale = y_scale,
+        xlim = x_lim, ylim = y_lim)
+
+    ax.grid(which = "major", axis = "both")
+
+    fig.colorbar(m, label = hue_label,#cax = ax[len_col_list],
+        fraction = .05, pad = 0.04, orientation = "vertical")      
+    plt.tight_layout()
+    
+    if save_path and save_fname:
+        image_name = save_path / (save_fname.replace(" ", "")+".png")
+        plt.savefig(image_name, facecolor='w')
+     
+    plt.show()
+
+def Scatter3D(x_vals, y_vals, z_vals,
+x_label, y_label, z_label,
+c_val = None, c_label = None, x_rot = 30, marker_size = 170, figsize_var = (11,5), palette_var = "viridis_r",alpha_var = 0.6,
+x_lim = None,y_lim = None, z_lim = None,
+save_fname = None, save_path = None):
+ 
+    fig = plt.figure(figsize = figsize_var) # dpi = 600
+    ax = fig.add_subplot(projection = "3d")
+
+    if c_label:
+        im = ax.scatter(x_vals,
+                    y_vals,
+                    z_vals, c = c_val, 
+                cmap = palette_var, marker = 'o',
+                s = marker_size, alpha = alpha_var, edgecolor = None, label = c_label)
+
+        # divider = make_axes_locatable(ax)
+        # cax = divider.append_axes("right", size="5%", pad=0.05)
+   
+        fig.colorbar(im, ax = ax,label = f"{c_label}",
+            fraction=0.025, pad=0.04)# ax=ax, 
+    else:
+        im = ax.scatter(x_vals,
+                    y_vals,
+                    z_vals,  
+                marker = 'o', s = marker_size, alpha = alpha_var, linewidth = 2,
+                edgecolor = cb_colors_list[0], color = cb_colors_list[0])
+    ax.view_init(15, x_rot)
+    ax.set(ylabel= y_label, xlabel=x_label, zlabel=z_label,
+    xlim = x_lim, ylim = y_lim, zlim = z_lim)
+
+    ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+    ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+    ax.zaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+
+    ax.tick_params(labelsize=12)
+    #fig.tight_layout()
+    #ax.tight_layout()
+    
+    if save_path and save_fname:
+        image_name = save_path / (save_fname.replace(" ", "")+".png")
+        plt.savefig(image_name, facecolor='w')
+    
+    plt.show()
+
+def multi_scatter_contin(
+    dataFrame, x_col, y_col, hue_col, col_col,
+    x_label, y_label, hue_label, col_label,
+    x_scale = "linear", y_scale = "linear", x_lim = None, y_lim = None,
+    fig_size_var = (12,8),palette_var = "viridis_r", hue_lim = [0,1], alpha_var = 0.5, marker_var = "s",
+    save_fname = None, save_path = None):
+    
+    col_list = dataFrame[col_col].unique()
+    len_col_list = len(col_list)
+
+    plt_widths = [1] * (len_col_list+1)
+    plt_widths[-1] = 0.05
+    fig, ax = plt.subplots(1,len_col_list+1, figsize = fig_size_var, gridspec_kw={'width_ratios': plt_widths})
+    
+    
+    for i, col in enumerate(col_list):
+
+        dataFrame_temp = dataFrame.loc[dataFrame[col_col] == col]
+    
+        m = ax[i].scatter(dataFrame_temp[x_col], dataFrame_temp[y_col], c = dataFrame_temp[hue_col],
+        cmap = palette_var, vmin = hue_lim[0], vmax = hue_lim[1], alpha = alpha_var, s = 100, marker = marker_var)
+
+        ax[i].set(ylabel = "", xlabel = x_label, title = col, xscale = x_scale, yscale = y_scale,
+        xlim = x_lim, ylim = y_lim)
+
+        if i in range(1,len_col_list+1):
+            ax[i].axes.yaxis.set_ticklabels([])
+
+        if i in range(0,len_col_list+1):
+            ax[i].grid(which = "major", axis = "both")
+
+    ax[0].set(ylabel = y_label)
+    fig.colorbar(m, label = hue_label, cax = ax[len_col_list],
+        #fraction = .5, pad = 0.1, orientation = "vertical", aspect = 30)  
+        fraction = .05, pad = 0.04, orientation = "vertical")      
+    plt.tight_layout()
+    
+    if save_path and save_fname:
+        image_name = save_path / (save_fname.replace(" ", "")+".png")
+        plt.savefig(image_name, facecolor='w')
+     
+    plt.show()
+
 #%% input variable
 source_path = Path("C:/Users/JacksC01/OneDrive - Johnson Matthey/Documents/DigitalModelling/JMTCi4Fermentation/data")
 output_path = Path("C:/Users/JacksC01/OneDrive - Johnson Matthey/Documents/DigitalModelling/JMTCi4Fermentation/figures")
 
 df_trends_clean = pd.read_csv(source_path / "obswise_fermentation.csv")
 df_all = pd.read_csv(source_path / "batchwise_fermentation.csv")
+
+df_fermid = pd.read_excel(source_path / "Production summary for Carl.xlsx", sheet_name = "FermenterID")
+df_fermid["USP"] = df_fermid['USP'].apply(lambda x: int(x.replace("USP","")))#.astype(int)
+df_all = df_all.merge(df_fermid, left_on = "USP", right_on = "USP")
 df_all.set_index("USP", drop = True, inplace = True)
 
+df_trends_clean = df_trends_clean.merge(df_fermid, left_on = "USP", right_on = "USP")
 
 #%%
 all_cols_dict = DoPickle("AllColsDict.pkl").pickle_load()
@@ -71,7 +174,6 @@ df_trends_clean["Production Media"] = np.where(df_trends_clean["GMSMK Prod Media
 df_trends_clean["Production Media"] = np.where(df_trends_clean['GMSMK Mod2 Prod Media'] == 1, "Mod2", df_trends_clean["Production Media"])
 df_all["Production Media"] = np.where(df_all["GMSMK Prod Media"] == 1, "Unmod", 'Mod1')
 df_all["Production Media"] = np.where(df_all['GMSMK Mod2 Prod Media'] == 1, "Mod2", df_all["Production Media"])
-
 
 #%% all trend plots
 df_trends_melt = df_trends_clean.melt(id_vars= ["USP","Time (h)"],
@@ -104,8 +206,8 @@ for i, ax in enumerate(g.axes):
         
     if i < 3:
         ax.text(0+0.25, 1.05, "Batch", size=14)
-        ax.text(9+0.25, 1.05, "FB(U)", size=14)
-        ax.text(24+0.25, 1.05, "FB(I)", size=14)
+        ax.text(9+0.25, 1.05, "UFB", size=14)
+        ax.text(24+0.25, 1.05, "IFB", size=14)
 
 g.add_legend(bbox_to_anchor=(0.5, 0.12),
     loc = "center",frameon=False, ncol = 6)
@@ -234,184 +336,211 @@ image_name = output_path / ("VolumetricActivityBaseProdMedia.png")
 plt.savefig(image_name, facecolor='w')
 plt.show()
 
+#%% scatter of harvest and activity, production media and temperature
+fig, ax = plt.subplots(1,1,figsize = (10,6))
+
+df_temp = df_all.copy()
+df_temp.rename(columns = {'Induction Temperature (°C)':'Temperature (°C)'}, inplace = True)
+
+sns.scatterplot(ax = ax, data = df_temp, y = "Harvest WCW (g/l)", x = "Volumetric Activity (U/ml)", style = 'Temperature (°C)',hue = "Production Media", 
+style_order = [30,25], hue_order = ["Unmod", "Mod1", "Mod2"],
+palette = "colorblind", markers = ["o","^"], s = 80, alpha = 0.8, edgecolor ="black")
+
+ax.legend(bbox_to_anchor = (1,1),
+    loc = "upper left", ncol = 1,
+    fancybox = False, framealpha = 1, edgecolor = "black",shadow = False)
+
+plt.tight_layout()
+image_name = output_path / ("VolumetricActivityHarvestWCWProdMediaTempScatter.png")
+plt.savefig(image_name, facecolor='w')
+plt.show()
+
 #%% Error pH f(Fr, Re, Activity)
 df_plot = df_trends_clean[['Induction Temperature (°C)',"log(Fr)", "log(Re)","Base (2h MA)","Production Media",
 "GMSMK Prod Media",'GMSMK Mod2 Prod Media','GMSMK Mod1 Prod Media','Feed Rate Fraction at Induction',
-    "Time (h)","Scale (l)", "Tip Speed (m/s)","pH","Volumetric Activity (U/ml)"]]#.loc[df_trends_clean["Time (h)"]<5]
+    "Time (h)","Scale (l)", "Tip Speed (m/s)","pH","Volumetric Activity (U/ml)", "FermenterID",'log(Power)','Temperature (°C)']]#.loc[df_trends_clean["Time (h)"]<5]
 
+df_plot["Power"] = 10**df_plot['log(Power)']
+df_plot['kla'] = df_plot['Power']**0.33
 df_plot["Fr"] = 10** df_plot["log(Fr)"]
 df_plot["Re"] = 10** df_plot["log(Re)"]
 df_plot["Error pH"] = (6.7 - df_plot["pH"])
 df_plot["Error pH (abs)"] = np.abs(df_plot["Error pH"])
-df_plot.sort_values(by = "Volumetric Activity (U/ml)", inplace = True, ascending = False)
-time_range = list(np.arange(1,48,2))
-
-plt.rcParams.update({'font.size': 16})
-fig, ax = plt.subplots(1,2, figsize = (12,6), sharey = True)
-sns.scatterplot(ax = ax[0], data = df_plot.loc[df_plot["Time (h)"].isin(time_range)],
-    x = "Fr", y = "Error pH (abs)", alpha = 0.6, s = 100,edgecolor = None,hue_norm = (0,7),
-    hue = "Volumetric Activity (U/ml)", palette = "mako_r", legend = True)#"Biomass Density (g/l)"
-
-sns.scatterplot(ax = ax[1], data = df_plot.loc[df_plot["Time (h)"].isin(time_range)],
-    x = "Re", y = "Error pH (abs)", alpha = 0.6, s = 100,edgecolor = None,hue_norm = (0,7),
-    hue = "Volumetric Activity (U/ml)", palette = "mako_r", legend = False)#"Biomass Density (g/l)"
-
-ax[0].legend(title = "Activity (U/ml)", loc="best",
-    fancybox = False, framealpha = 1, edgecolor = "black",shadow = False)
-
-ax[0].set(ylabel = r"$|E_{pH}|$", xlabel = r"$Fr$",
-    yscale = "log", xscale = "log")
-ax[1].set(ylabel = r"$|E_{pH}|$", xlabel = r"$Re$",
-    yscale = "log", xscale = "log")
-
-plt.tight_layout()
-image_name = output_path / ("VolumetricActivityPHErrorFrRe.png")
-plt.savefig(image_name, facecolor='w')
-plt.show()
-
-
-plt.rcParams.update({'font.size': 16})
-fig, ax = plt.subplots(1,2, figsize = (12,6), sharey = True)
-sns.scatterplot(ax = ax[0], data = df_plot.loc[df_plot["Time (h)"].isin(time_range)],
-    x = "Fr", y = "Base (2h MA)", alpha = 0.5, s = 100, edgecolor = None,hue_norm = (0,7),
-    hue = "Volumetric Activity (U/ml)", palette = "mako_r", legend = True)#"Biomass Density (g/l)"
-
-sns.scatterplot(ax = ax[1], data = df_plot.loc[df_plot["Time (h)"].isin(time_range)],
-    x = "Re", y = "Base (2h MA)", alpha = 0.5, s = 100,edgecolor = None,hue_norm = (0,7),
-    hue = "Volumetric Activity (U/ml)", palette = "mako_r", legend = False)#"Biomass Density (g/l)"
-
-ax[0].legend(title = "Activity (U/ml)", loc="best", ncol = 2,
-    fancybox = False, framealpha = 1, edgecolor = "black",shadow = False)
-
-ax[0].set(ylabel = "Base (2h MA)", xlabel = r"$Fr$",
-    yscale = "linear", xscale = "log")
-ax[1].set(ylabel = "Base (2h MA)", xlabel = r"$Re$",
-    yscale = "linear", xscale = "log")
-
-plt.tight_layout()
-image_name = output_path / ("VolumetricActivityBaseFrRe.png")
-plt.savefig(image_name, facecolor='w')
-plt.show()
-
-#%% Error pH f(Fr, pH Error, Media)
-# plt.rcParams.update({'font.size': 16})
-# marker_list = ["o","v","D","x","X","<","8","s","^","p","P","*","h","H","+","d","|","_"]
-
-# fig, ax = plt.subplots(1,3, figsize = (12,6), sharey = True, sharex = True)
-
-# h, l = [], []
-# for i, media in enumerate(zip(["GMSMK Prod Media",'GMSMK Mod1 Prod Media','GMSMK Mod2 Prod Media'],["Unmodified",'Mod1','Mod2'])):
-#     media_col = media[0]
-#     media_label = media[1]
-
-#     sns.scatterplot(ax = ax[i], data = df_plot.loc[
-#         (df_plot[media_col]==1)
-#         ],
-#         #& (df_plot['Feed Rate Fraction at Induction']>=0.8)],
-#         x = "Fr", y = "Error pH (abs)", alpha = 0.4, s = 100, marker = markers_plot[i],
-#         hue = "Volumetric Activity (U/ml)", hue_norm = (0,7),palette = "mako_r", legend = True)#"Biomass Density (g/l)"
-
-#     ax[i].set(ylabel = r"$|E_{pH}|$", xlabel = r"$Fr$",
-#     yscale = "log", xscale = "log")
-
-#     [h.append(hi) for hi in ax[i].get_legend_handles_labels()[0]]
-#     [l.append(li) for li in ax[i].get_legend_handles_labels()[1]]
-
-#     ax[i].legend([],[],title = media_label, loc = "upper left",frameon = False)
-
-# plt.tight_layout()
-# image_name = output_path / ("VolumetricActivityPHErrorFrProdMedia.png")
-# plt.savefig(image_name, facecolor='w')
-# plt.show()
-
-# fig, ax = plt.subplots(1,3, figsize = (12,6), sharey = True, sharex = True)
-
-# h, l = [], []
-# for i, media in enumerate(zip(["GMSMK Prod Media",'GMSMK Mod1 Prod Media','GMSMK Mod2 Prod Media'],["Unmodified",'Mod1','Mod2'])):
-#     media_col = media[0]
-#     media_label = media[1]
-
-#     sns.scatterplot(ax = ax[i], data = df_plot.loc[
-#         (df_plot[media_col]==1)
-#         ],
-#         #& (df_plot['Feed Rate Fraction at Induction']>=0.8)],
-#         x = "Re", y = "Base (2h MA)", alpha = 0.4, s = 100, marker = markers_plot[i],
-#         hue = "Volumetric Activity (U/ml)", hue_norm = (0,7),palette = "mako_r", legend = True)#"Biomass Density (g/l)"
-
-#     ax[i].set(ylabel = "Base (2h MA)", xlabel = r"$Re$",
-#     yscale = "linear", xscale = "log")
-
-#     [h.append(hi) for hi in ax[i].get_legend_handles_labels()[0]]
-#     [l.append(li) for li in ax[i].get_legend_handles_labels()[1]]
-
-#     ax[i].legend([],[],title = media_label, loc = "upper left",frameon = False)
-
-# plt.tight_layout()
-# image_name = output_path / ("VolumetricActivityBaseReProdMedia.png")
-# plt.savefig(image_name, facecolor='w')
-# plt.show()
+df_plot["Production Media"] = pd.Categorical(df_plot["Production Media"], ["Unmod","Mod1", "Mod2"])
+df_plot.sort_values(by = ["Production Media","Feed Rate Fraction at Induction","Time (h)"], inplace = True)
+# df_plot.sort_values(by = "Volumetric Activity (U/ml)", inplace = True, ascending = False)
+time_range = list(np.arange(1,48,1))
+plt.rcParams.update({'font.size': 20})
 
 #%%
-plt.rcParams.update({'font.size': 16})
+multi_scatter_contin(df_plot.loc[(df_plot["Time (h)"].isin(time_range))],
+    'Base (2h MA)', "Error pH (abs)", "Feed Rate Fraction at Induction", "Production Media",
+    'Base (2h MA)', r"$|E_{pH}|$", "FRFI", "Media",
+    y_scale = "log", x_scale = "linear", x_lim = [0.,1.1], y_lim = [0.0001,1.5],
+    fig_size_var = (14,8),palette_var = sns.diverging_palette(250, 30, l=65, center="dark", as_cmap=True), hue_lim = [0.5, 1], alpha_var = 0.6, marker_var = "s",
+    save_fname = "FRFI_BasePHErrorMedia", save_path = output_path)
 
-fig, ax = plt.subplots(1,3, figsize = (12,6), sharey = True, sharex = True)
-h, l = [], []
-for i, media in enumerate(["Unmod","Mod1", "Mod2"]):
+scatter_contin(df_plot.loc[(df_plot['Induction Temperature (°C)']>22) & (df_plot["Time (h)"]<12) & (df_plot["pH"]>4)],
+    'Fr', "Error pH (abs)", 'Time (h)',
+    'Fr', r"$|E_{pH}|$", 'Time (h)',
+    y_scale = "log", x_scale = "linear",  x_lim = None, y_lim = None,
+    fig_size_var = (12,8),
+    palette_var = sns.diverging_palette(20, 220, l=65, center="dark", as_cmap=True),
+    hue_lim = [0, 10], alpha_var = 0.5, marker_var = "s",
+    save_fname = "Time_FrPHErrorMedia", save_path = output_path)
 
-    sns.scatterplot(ax = ax[i], data = df_plot.loc[
-        (df_plot["Production Media"]==media)
-        ],
-        #& (df_plot['Feed Rate Fraction at Induction']>=0.8)],
-        x = "Re", y = "Base (2h MA)", alpha = 0.3, s = 50, marker = "o",edgecolor = "black",
-        # color = "black",edgecolor = "black", facecolor = "none")
-        hue = "Feed Rate Fraction at Induction", hue_norm = (0.5,1), 
-        palette = "viridis_r",legend = True)#"Biomass Density (g/l)"
+multi_scatter_contin(
+    df_plot.loc[(df_plot['Induction Temperature (°C)']>22)&(df_plot["Time (h)"].isin(time_range))],
+    "kla",'Base (2h MA)', "Volumetric Activity (U/ml)", "Production Media",
+     r"$P_{v}^{\alpha}$",'Base (2h MA)', "Activity (U/ml)", "Media",
+    y_scale = "linear", x_scale = "linear",  y_lim = [0,1.1], x_lim = [0,25],
+    fig_size_var = (12,8),
+    palette_var = "viridis_r",
+    hue_lim = [2, 7], alpha_var = 0.5, marker_var = "s",
+    save_fname = "Activity_BaseKlaMedia", save_path = output_path)
 
-    ax[i].set(ylabel = "Base (2h MA)", xlabel = r"$Re$",
-    yscale = "linear", xscale = "log", title = media)
+#%%
+multi_scatter_contin(df_plot.loc[df_plot['Induction Temperature (°C)']>28],
+    'Re',"Error pH (abs)", "Volumetric Activity (U/ml)", "Production Media",
+    r'Re', r"$|E_{pH}|$", "Activity (U/ml)", "Production Media",
+    y_scale = "log", x_scale = "log", x_lim = None, y_lim = None,
+    fig_size_var = (12,8),palette_var = "mako_r", hue_lim = [0,7], alpha_var = 0.5, marker_var = "s",
+    save_fname = None, save_path = None)
 
-    [h.append(hi) for hi in ax[i].get_legend_handles_labels()[0]]
-    [l.append(li) for li in ax[i].get_legend_handles_labels()[1]]
+multi_scatter_contin(df_plot.loc[df_plot['Induction Temperature (°C)']>26],
+    'kla','Base (2h MA)', "Volumetric Activity (U/ml)", "Production Media",
+    r'$P_{v}^{\alpha}$', 'Base (2h MA)', "Activity (U/ml)", "Production Media",
+    y_scale = "linear", x_scale = "linear", x_lim = None, y_lim = None,
+    fig_size_var = (12,8),palette_var = sns.diverging_palette(250, 30, l=65, center="dark", as_cmap=True), hue_lim = [1,7], alpha_var = 0.5, marker_var = "s",
+    save_fname = "Activity_klaBaseMedia", save_path = None)
 
-    ax[i].legend([],[],frameon = False)
+multi_scatter_contin(df_plot,#.loc[(df_plot["Scale (l)"]==1)],
+    'kla', "Base (2h MA)", "Volumetric Activity (U/ml)", "Production Media",
+    'kla', "Base (2h MA)", "Volumetric Activity (U/ml)", "Production Media",
+    y_scale = "linear", x_scale = "linear", x_lim = None, y_lim = None,
+    fig_size_var = (12,8),palette_var = "mako_r", hue_lim = [1,7], alpha_var = 0.5, marker_var = "s",
+    save_fname = None, save_path = None)
 
-ax[2].legend(h[:3], l[:3],title = "FRFI", loc="best",
-    fancybox = False, framealpha = 1, edgecolor = "black",shadow = False)
-plt.tight_layout()
-image_name = output_path / ("BaseReFRFI.png")
-plt.savefig(image_name, facecolor='w')
+multi_scatter_contin(df_plot.loc[(df_plot["Scale (l)"]==1)],
+    "Fr", "Error pH (abs)", "Volumetric Activity (U/ml)", "Production Media",
+    r"$Fr$", r"$|E_{pH}|$", "Activity (U/ml)", "Media",
+    y_scale = "log", x_scale = "log", x_lim = [2e-2, 3e0], y_lim = [1e-5, 1e1],
+    fig_size_var = (12,8),palette_var = "mako_r", hue_lim = [1,7], alpha_var = 0.5, marker_var = "s",
+    save_fname = None, save_path = None)
+
+#%%
+scatter_contin(df_plot.loc[(df_plot['Induction Temperature (°C)']>22)],
+    'Fr', "Base (2h MA)", "Feed Rate Fraction at Induction",
+    'Fr', "Base (2h MA)", "FRFI",
+    y_scale = "linear", x_scale = "linear",  x_lim = None, y_lim = None,
+    fig_size_var = (12,8),
+    palette_var = sns.diverging_palette(250, 30, l=65, center="dark", as_cmap=True), hue_lim = [0.5, 1], alpha_var = 0.5, marker_var = "s",
+    save_fname = "FRFI_FrBase", save_path = output_path)
+
+#%%
+df_temp = df_trends_clean.loc[(df_trends_clean["Time (h)"]>=0) & (df_trends_clean["Time (h)"]<3) & (df_plot["pH"]>-5)].groupby(["Scale (l)","USP"])[["pH","Volumetric Activity (U/ml)","Time (h)"]].min()
+
+fig, ax = plt.subplots()
+sns.lineplot(
+    ax = ax,
+    data = df_trends_clean.loc[(df_trends_clean["Time (h)"]>=0) & (df_trends_clean["Time (h)"]<2) & (df_plot["pH"]>-5)],
+    y = "pH", x = "Time (h)", hue = "Volumetric Activity (U/ml)",
+    legend = False, palette = "mako_r")
+ax.set(xscale = "linear")
 plt.show()
 
 #%%
-plt.rcParams.update({'font.size': 16})
+df_temp = df_trends_clean[["Volumetric Activity (U/ml)", "Scale (l)", "Base (2h MA)","Feed Total"]].copy()
+df_temp["Activity (U/ml)"] = df_temp["Volumetric Activity (U/ml)"]
 
-fig, ax = plt.subplots(1,3, figsize = (12,6), sharey = True, sharex = True)
-h, l = [], []
-for i, media in enumerate(["Unmod","Mod1", "Mod2"]):
+plt.rcParams.update({'font.size': 20})
+fig, ax = plt.subplots(1,1, figsize = (16,6))
 
-    sns.scatterplot(ax = ax[i], data = df_plot.loc[
-        (df_plot["Production Media"]==media)
-        ],
-        #& (df_plot['Feed Rate Fraction at Induction']>=0.8)],
-        x = "Re", y = "Base (2h MA)", alpha = 0.3, s = 50, marker = "o",edgecolor = "black",
-        # color = "black",edgecolor = "black", facecolor = "none")
-        hue = 'Induction Temperature (°C)',
-        palette = "viridis_r",legend = True)#"Biomass Density (g/l)"
+sns.lineplot(data = df_temp,
+    x = "Feed Total", y = "Base (2h MA)", hue = "Activity (U/ml)", hue_norm = (2.,6),style = "Scale (l)",
+    linewidth = 2, palette = "viridis_r", legend = "brief")
 
-    ax[i].set(ylabel = "Base (2h MA)", xlabel = r"$Re$",
-    yscale = "linear", xscale = "log", title = media)
+ax.set(yscale = "linear", ylabel = "Base (2h MA)", xlabel = r"$X_{F}$", ylim = [0.,1.], xlim = [0,1.])
+ax.grid(which = "both", axis = "x")
 
-    [h.append(hi) for hi in ax[i].get_legend_handles_labels()[0]]
-    [l.append(li) for li in ax[i].get_legend_handles_labels()[1]]
+ax.legend(bbox_to_anchor=(1, 1),
+loc="upper left", ncol = 1,
+fancybox = False, framealpha = 1, edgecolor = "black",shadow = False)
 
-    ax[i].legend([],[],frameon = False)
-
-ax[2].legend(h[:3], l[:3],title = "FRFI", loc="best",
-    fancybox = False, framealpha = 1, edgecolor = "black",shadow = False)
-plt.tight_layout()
-# image_name = output_path / ("BaseReFRFI.png")
-# plt.savefig(image_name, facecolor='w')
+fig.tight_layout()
+image_name = output_path / ("Activity_FeedBaseTrend.png")
+plt.savefig(image_name, facecolor='w')
 plt.show()
+
+
+#%%
+df_temp = df_plot.loc[(df_plot['Induction Temperature (°C)']>26)&(df_plot["Time (h)"]>1)]# &(df_plot["Time (h)"].isin(time_range))
+# 'Base (2h MA)' , "Error pH (abs)"
+
+Scatter3D(df_temp["Volumetric Activity (U/ml)"], df_temp['Fr'], df_temp["Error pH (abs)"] , 
+"Activity (U/ml)","Fr", r"$|E_{pH}|$", 
+c_val = df_temp['Base (2h MA)'], c_label = 'Base (2h MA)', x_rot = 60, marker_size = 120, figsize_var = (10,16), palette_var = "Reds", alpha_var = 1.,
+x_lim = None, y_lim = [0,2.5], z_lim = [0,0.3],
+save_fname = None, save_path = None)
+
+#%% fermenter id and pH error
+plt.rcParams.update({'font.size': 20})
+
+fig, ax = plt.subplots(figsize = (12,6))
+
+sns.barplot(ax = ax, data = df_plot.sort_values(by = "FermenterID"), dodge = True, orient = "horizontal", ci = None,
+    y = "FermenterID", x = "Error pH (abs)", hue = "Production Media", alpha = 0.75,#color = "grey",
+    edgecolor = None, palette = "colorblind", hue_order = ["Unmod", "Mod1", "Mod2"])
+
+sns.stripplot(ax = ax, data = df_plot.sort_values(by = "FermenterID"),dodge = True,
+    y = "FermenterID", x = "Error pH (abs)",
+    hue = "Production Media", color = "black",hue_order = ["Unmod", "Mod1", "Mod2"],
+    alpha = 0.7)
+
+ax.set(xlabel = r"$|E_{pH}|$", ylabel = "Fermenter", xscale = "log")
+ax.grid(which = "major", axis = "x")
+
+h, l = ax.get_legend_handles_labels()
+ax.legend(
+    handles = h[-3:], labels = l[-3:],
+    title = "Production\nMedia", loc="upper left", bbox_to_anchor = (1,1),
+    fancybox = False, framealpha = 1, edgecolor = "black",shadow = False
+    )
+
+plt.tight_layout()
+image_name = output_path / ("FermIDPHError.png")
+plt.savefig(image_name, facecolor='w')
+plt.show()
+
+# production media and ph control (excluding 42 L)
+plt.rcParams.update({'font.size': 20})
+
+fig, ax = plt.subplots(figsize = (12,6))
+
+sns.kdeplot(
+    ax = ax, data = df_plot.loc[(df_plot["Scale (l)"] != 42) & (df_plot["Error pH (abs)"] != 0.)], 
+    x = "Error pH (abs)", hue = "Production Media",hue_order = ["Unmod", "Mod1", "Mod2"],
+    linewidth = 2,
+    hue_norm = True, log_scale = True,
+    alpha = 0.75, palette = "colorblind")
+
+ax.get_yaxis().set_visible(False)
+
+ax.set(xlabel = r"$|E_{pH}|$")
+ax.grid(which = "major", axis = "x")
+
+# h, l = ax.get_legend_handles_labels()
+# ax.legend(
+#     handles = h[-3:], labels = l[-3:],
+#     title = "Production\nMedia", loc="upper left", bbox_to_anchor = (1,1),
+#     fancybox = False, framealpha = 1, edgecolor = "black",shadow = False
+#     )
+
+plt.tight_layout()
+image_name = output_path / ("PHErrorDist.png")
+plt.savefig(image_name, facecolor='w')
+plt.show()
+
 
 #%%
 fig, ax = plt.subplots(1,1,figsize = (12,3))
@@ -429,36 +558,6 @@ image_name = output_path / ("VolumetricActivityProdMediaBoxPlot.png")
 plt.savefig(image_name, facecolor='w')
 plt.show()
 
-
-#%%
-plt.rcParams.update({'font.size': 16})
-
-fig, ax = plt.subplots(1,3, figsize = (12,6), sharey = True, sharex = True)
-h, l = [], []
-for i, media in enumerate(["Unmod","Mod1", "Mod2"]):
-
-    sns.scatterplot(ax = ax[i], data = df_plot.loc[
-        (df_plot["Production Media"]==media)
-        ],
-        x = "Re", y = "Base (2h MA)", alpha = 0.3, s = 50, marker = "o",edgecolor = "black",
-        # color = "black",edgecolor = "black", facecolor = "none")
-        hue = 'Induction Temperature (°C)',
-        palette = "Reds",legend = True)#"Biomass Density (g/l)"
-
-    ax[i].set(ylabel = "Base (2h MA)", xlabel = r"$Re$",
-    yscale = "linear", xscale = "log", title = media)
-
-    [h.append(hi) for hi in ax[i].get_legend_handles_labels()[0]]
-    [l.append(li) for li in ax[i].get_legend_handles_labels()[1]]
-
-    ax[i].legend([],[],frameon = False)
-
-ax[2].legend(h[:], l[:],title = "FRFI", loc="best",
-    fancybox = False, framealpha = 1, edgecolor = "black",shadow = False)
-plt.tight_layout()
-# image_name = output_path / ("BaseReFRFI.png")
-# plt.savefig(image_name, facecolor='w')
-plt.show()
 
 sd_30 = df_all["Volumetric Activity (U/ml)"].loc[(df_all["Production Media"]=="Mod1") & (df_all['Induction Temperature (°C)']==30)].std()
 mean_30 = df_all["Volumetric Activity (U/ml)"].loc[(df_all["Production Media"]=="Mod1") & (df_all['Induction Temperature (°C)']==30)].mean()
@@ -478,50 +577,6 @@ plt.savefig(image_name, facecolor='w')
 plt.show()
 
 #%% Harvest WCW (g/l)
-
-def Scatter3D(x_vals, y_vals, z_vals,
-x_label, y_label, z_label,
-c_val = None, c_label = None, x_rot = 30, marker_size = 170, figsize_var = (11,5), palette_var = "viridis_r",
-save_fname = None, save_path = None):
- 
-    fig = plt.figure(figsize = figsize_var) # dpi = 600
-    ax = fig.add_subplot(projection = "3d")
-
-    if c_label:
-
-        im = ax.scatter(x_vals,
-                    y_vals,
-                    z_vals, c = c_val, 
-                cmap = palette_var, marker = 'o',
-                s = marker_size, alpha = 0.7, edgecolor = None, label = c_label)
-
-        # divider = make_axes_locatable(ax)
-        # cax = divider.append_axes("right", size="5%", pad=0.05)
-   
-        fig.colorbar(im, ax = ax,label = f"{c_label}",
-            fraction=0.025, pad=0.04)# ax=ax, 
-    else:
-        im = ax.scatter(x_vals,
-                    y_vals,
-                    z_vals,  
-                marker = 'o', s = marker_size, alpha = 0.8, linewidth = 2,
-                edgecolor = cb_colors_list[0], color = cb_colors_list[0])
-    ax.view_init(20, x_rot)
-    ax.set(ylabel= y_label, xlabel=x_label, zlabel=z_label)
-
-    ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-    ax.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-    ax.zaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-
-    ax.tick_params(labelsize=12)
-    #fig.tight_layout()
-    #ax.tight_layout()
-    
-    if save_path and save_fname:
-        image_name = save_path / (save_fname.replace(" ", "")+".png")
-        plt.savefig(image_name, facecolor='w')
-    
-    plt.show()
 
 def sns_lineplot(dataFrame, x_label, y_label, color_label, style_label = None, y_scale = "linear", x_scale = "linear", legend_var = False, title_var = None, save_path = None):
     

@@ -434,9 +434,6 @@ process_params = ['Temperature (°C)',
  "log(E Total)",
  'Acid (2h MA)',
  'Base (2h MA)',
-#  "OU Total",
-#  "OUR",
- #"dOUR/dt (2h MA)",
  "log(Re)",
  "log(Fr)"
 ]

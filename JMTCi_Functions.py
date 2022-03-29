@@ -296,7 +296,7 @@ class DoPCA():
     def plot_var_explained(self, x_lim = [0,10], save_path = None,
         save_fname = None):
 
-        fig, ax = plt.subplots(figsize = (8,8))
+        fig, ax = plt.subplots(figsize = (12,8))
         x_vals = range(1, len(self.cum_var_exp)+1)
 
         ax.bar(x_vals, self.var_exp,

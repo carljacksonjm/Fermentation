@@ -84,6 +84,8 @@ print("Data ready.")
 
 #%%
 pca_object = DoPCA(X_sc)
+
+plt.rcParams.update({'font.size': 20})
 pca_object.plot_var_explained(x_lim = [0,8], save_path = pca_path, save_fname = "BWUPCAExplainedVariance")
 loadings_pca, scores_pca, eigen_vals_pca, pca_cols, pca_exp_cols = pca_object.calibrate_pca(pca_components)
 
@@ -153,11 +155,12 @@ loading_thresh = max_loading/3
 df_timeinvar["Significant"] = np.where(df_timeinvar["Loadings"].abs() > loading_thresh,
     True, False)
 
+plt.rcParams.update({'font.size': 20})
 g = sns.catplot(data = df_timeinvar.sort_values(by = ["PC", "Parameter"], ascending = True), kind = "bar",
     x = "Loadings", y = "Parameter", col = "PC", hue = "Loadings",#"Significant",
-    col_wrap = 2, palette = "vlag_r",#sns.color_palette(["white","grey"]),
+    col_wrap = 4, palette = "vlag_r",#sns.color_palette(["white","grey"]),
     dodge = False, edgecolor = "black",
-    orient = "h", height = 4, aspect = 1.5, ci = None, legend = False)
+    orient = "h", height = 6, aspect = 1, ci = None, legend = False)
 
 for ax in g.axes.flat:
     ax.grid(which = "major", axis = "y")
